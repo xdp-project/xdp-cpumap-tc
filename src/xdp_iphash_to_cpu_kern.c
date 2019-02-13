@@ -45,12 +45,6 @@ struct bpf_map_def SEC("maps") cpus_count = {
 	.value_size	= sizeof(u32),
 	.max_entries	= 1,
 };
-struct bpf_map_def SEC("maps") cpus_iterator = {
-	.type		= BPF_MAP_TYPE_PERCPU_ARRAY,
-	.key_size	= sizeof(u32),
-	.value_size	= sizeof(u32),
-	.max_entries	= 1,
-};
 struct bpf_map_def SEC("maps") cpu_direction = {
 	.type        = BPF_MAP_TYPE_HASH,
 	.key_size    = sizeof(u32),

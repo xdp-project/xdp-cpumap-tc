@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
 
 TARGET := xdp_pass
+TARGET += xdp_iphash_to_cpu
 
 LLC ?= llc
 CLANG ?= clang

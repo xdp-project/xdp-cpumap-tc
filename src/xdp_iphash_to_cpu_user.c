@@ -30,12 +30,11 @@ static const char *__doc__=
 #include <libgen.h>  /* dirname */
 
 #include <arpa/inet.h>
-#include <linux/if_link.h>
+#include <uapi/linux/if_link.h>
 
-#include "bpf_load.h"
-#include "bpf_util.h"
-#include "bpf/libbpf.h"
 #include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+#include <bpf_util.h>
 #include "xdp_iphash_to_cpu_common.h"
 
 /* Interface direction WARNING - sync with _user.c */
@@ -48,8 +47,30 @@ static char ifname_buf[IF_NAMESIZE];
 static char *ifname = NULL;
 static int ifindex = -1;
 
+static int cpu_map_fd = -1;
+static int ip_hash_map_fd = -1;
+static int cpus_available_map_fd  = -1;
+static int cpus_count_map_fd = -1;
+static int cpu_direction_map_fd  = -1;
+
+static int init_map_fds(struct bpf_object *obj)
+{
+	cpu_map_fd            = bpf_object__find_map_fd_by_name(obj, "cpu_map");
+	ip_hash_map_fd        = bpf_object__find_map_fd_by_name(obj, "rx_cnt");
+	cpus_available_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_available");
+	cpus_count_map_fd     = bpf_object__find_map_fd_by_name(obj, "cpus_count");
+	cpu_direction_map_fd  = bpf_object__find_map_fd_by_name(obj, "cpu_direction");
+
+	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
+	    cpus_available_map_fd < 0 ||
+	    cpus_count_map_fd < 0 || cpu_direction_map_fd < 0)
+		return -ENOENT;
+
+	return 0;
+}
+
 #define NR_MAPS 6
-int maps_marked_for_export[MAX_MAPS] = { 0 };
+int maps_marked_for_export[NR_MAPS] = { 0 };
 
 static const char* map_idx_to_export_filename(int idx)
 {
@@ -69,10 +90,7 @@ static const char* map_idx_to_export_filename(int idx)
 	case 3: /* map_fd[3]: cpus_count */
 		file =   file_cpus_count;
 		break;
-	case 4: /* map_fd[4]: cpus_iterator */
-		file =   file_cpus_iterator;
-		break;
-	case 5: /* map_fd[5]: cpu_direction */
+	case 4: /* map_fd[4]: cpu_direction */
 		file =   file_cpu_direction;
 		break;
 	default:
@@ -92,7 +110,7 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size,
 	 * the kernel for the cpu.
 	 */
 	/* map_fd[0]: cpu_map */
-	ret = bpf_map_update_elem(map_fd[0], &cpu, &queue_size, 0);
+	ret = bpf_map_update_elem(cpu_map_fd, &cpu, &queue_size, 0);
 	if (ret) {
 		fprintf(stderr, "Create CPU entry failed (err:%d)\n", ret);
 		exit(EXIT_FAIL_BPF);
@@ -102,7 +120,7 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size,
 	 * from via some control maps.
 	 */
 	/* map_fd[2] = cpus_available */
-	ret = bpf_map_update_elem(map_fd[2], &avail_idx, &cpu, 0);
+	ret = bpf_map_update_elem(cpus_available_map_fd, &avail_idx, &cpu, 0);
 	if (ret) {
 		fprintf(stderr, "Add to avail CPUs failed\n");
 		exit(EXIT_FAIL_BPF);
@@ -110,20 +128,20 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size,
 
 	/* When not replacing/updating existing entry, bump the count */
 	/* map_fd[3] = cpus_count */
-	ret = bpf_map_lookup_elem(map_fd[3], &key, &curr_cpus_count);
+	ret = bpf_map_lookup_elem(cpus_count_map_fd, &key, &curr_cpus_count);
 	if (ret) {
 		fprintf(stderr, "Failed reading curr cpus_count\n");
 		exit(EXIT_FAIL_BPF);
 	}
 	if (new) {
 		curr_cpus_count++;
-		ret = bpf_map_update_elem(map_fd[3], &key, &curr_cpus_count, 0);
+		ret = bpf_map_update_elem(cpus_count_map_fd,
+					  &key, &curr_cpus_count, 0);
 		if (ret) {
 			fprintf(stderr, "Failed write curr cpus_count\n");
 			exit(EXIT_FAIL_BPF);
 		}
 	}
-	/* map_fd[4] = cpus_iterator */
 	if (verbose) {
 		printf("%s CPU:%u as idx:%u queue_size:%d (total cpus_count:%u)\n",
 	       	new ? "Add-new":"Replace", cpu, avail_idx,
@@ -142,7 +160,8 @@ static void mark_cpus_unavailable(void)
 
 	for (i = 0; i < MAX_CPUS; i++) {
 		/* map_fd[2] = cpus_available */
-		ret = bpf_map_update_elem(map_fd[2], &i, &invalid_cpu, 0);
+		ret = bpf_map_update_elem(cpus_available_map_fd,
+					  &i, &invalid_cpu, 0);
 		if (ret) {
 			fprintf(stderr, "Failed marking CPU unavailable\n");
 			exit(EXIT_FAIL_BPF);
@@ -152,23 +171,20 @@ static void mark_cpus_unavailable(void)
 
 static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 {
+	const char *file = file_ip_hash;
 	int i;
-	if(verbose) {
+
+	if (verbose) {
 		fprintf(stderr, "Removing XDP program on ifindex:%d device:%s\n",
 			ifindex, ifname);
 	}
 	if (ifindex > -1)
 		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
-		//set_link_xdp_fd(ifindex, -1, xdp_flags);
 
-	/* Remove all exported map file */
-	for (i = 0; i < NR_MAPS; i++) {
-		const char *file = map_idx_to_export_filename(i);
-
-		if (unlink(file) < 0) {
-			printf("WARN: cannot rm map(%s) file:%s err(%d):%s\n",
-			       map_data[i].name, file, errno, strerror(errno));
-		}
+	/* Remove exported map files */
+	if (unlink(file) < 0) {
+		printf("WARN: cannot rm map file:%s err(%d):%s\n",
+		       file, errno, strerror(errno));
 	}
 }
 
@@ -243,105 +259,17 @@ static int bpf_fs_check_path(const char *path)
 	return err;
 }
 
-/* Load existing map via filesystem, if possible */
-int load_map_file(const char *file, struct bpf_map_data *map_data)
-{
-	int fd;
-
-	if (bpf_fs_check_path(file) < 0) {
-		exit(EXIT_FAIL_MAP_FS);
-	}
-
-	fd = bpf_obj_get(file);
-	if (fd > 0) { /* Great: map file already existed use it */
-		// FIXME: Verify map size etc is the same before returning it!
-		// data available via map->def.XXX and fdinfo
-		if (verbose)
-			printf(" - Loaded bpf-map:%-30s from file:%s\n",
-			       map_data->name, file);
-		return fd;
-	}
-	return -1;
-}
-
-/* Map callback
- * ------------
- * The bpf-ELF loader (bpf_load.c) got support[1] for a callback, just
- * before creating the map (via bpf_create_map()).  It allow assigning
- * another FD and skips map creation.
- *
- * Using this to load map FD from via filesystem, if possible.  One
- * problem, cannot handle exporting the map here, as creation happens
- * after this step.
- *
- * [1] kernel commit 6979bcc731f9 ("samples/bpf: load_bpf.c make
- * callback fixup more flexible")
- */
-void pre_load_maps_via_fs(struct bpf_map_data *map_data, int idx)
-{
-	/* This callback gets invoked for every map in ELF file */
-	const char *file;
-	int fd;
-
-	file = map_idx_to_export_filename(idx);
-	fd = load_map_file(file, map_data);
-
-	if (fd > 0) {
-		/* Makes bpf_load.c skip creating map */
-		map_data->fd = fd;
-	} else {
-		/* When map was NOT loaded from filesystem, then
-		 * bpf_load.c will create it. Mark map idx to get
-		 * it exported later
-		 */
-		maps_marked_for_export[idx] = 1;
-	}
-}
-
-int export_map_idx(int map_idx)
-{
-	const char *file;
-
-	file = map_idx_to_export_filename(map_idx);
-
-	/* Export map as a file */
-	if (bpf_obj_pin(map_fd[map_idx], file) != 0) {
-		fprintf(stderr, "ERR: Cannot pin map(%s) file:%s err(%d):%s\n",
-			map_data[map_idx].name, file, errno, strerror(errno));
-		return EXIT_FAIL_MAP;
-	}
-	if (verbose)
-		printf(" - Export bpf-map:%-30s to   file:%s\n",
-		       map_data[map_idx].name, file);
-	return 0;
-}
-
-void export_maps(void)
+void chown_maps(uid_t owner, gid_t group, const char *file)
 {
 	int i;
 
-	for (i = 0; i < NR_MAPS; i++) {
-		if (maps_marked_for_export[i] == 1)
-			export_map_idx(i);
-	}
-}
-
-void chown_maps(uid_t owner, gid_t group)
-{
-	const char *file;
-	int i;
-
-	for (i = 0; i < NR_MAPS; i++) {
-		file = map_idx_to_export_filename(i);
-
-		/* Change permissions and user for the map file, as this allow
-		 * an unpriviliged user to operate the cmdline tool.
-		 */
-		if (chown(file, owner, group) < 0)
-			fprintf(stderr,
-				"WARN: Cannot chown file:%s err(%d):%s\n",
-				file, errno, strerror(errno));
-	}
+	/* Change permissions and user for the map file, as this allow
+	 * an unpriviliged user to operate the cmdline tool.
+	 */
+	if (chown(file, owner, group) < 0)
+		fprintf(stderr,
+			"WARN: Cannot chown file:%s err(%d):%s\n",
+			file, errno, strerror(errno));
 }
 
 int main(int argc, char **argv)
@@ -359,7 +287,19 @@ int main(int argc, char **argv)
 	int added_cpus = 0;
 	int add_cpu = -1;
 	int cpus[MAX_CPUS];
+	int err;
 	int opt;
+	int i;
+
+	/* libbpf */
+	struct bpf_prog_load_attr prog_load_attr = {
+		.prog_type      = BPF_PROG_TYPE_XDP,
+	};
+	struct bpf_prog_info info = {};
+	__u32 info_len = sizeof(info);
+	struct bpf_object *obj;
+	struct bpf_map *map;
+	int prog_fd;
 
 	/* Notice: choosing the queue size is very important with the
 	 * ixgbe driver, because it's driver page recycling trick is
@@ -370,7 +310,8 @@ int main(int argc, char **argv)
 	qsize = 128+64;
 
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
-	
+	prog_load_attr.file = filename;
+
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "hSrqdwlc:",
 				  long_options, &longindex)) != -1) {
@@ -470,26 +411,46 @@ int main(int argc, char **argv)
 		perror("setrlimit(RLIMIT_MEMLOCK, RLIM_INFINITY)");
 		return 1;
 	}
-	/* Load bpf-ELF file with callback for loading maps via filesystem */
-	if (load_bpf_file_fixup_map(filename, pre_load_maps_via_fs)) {
-		fprintf(stderr, "ERR in load_bpf_file(): \n fn: %s\n bpf_log_buf: %s\n", filename,bpf_log_buf);
+
+	/* ISSUE: How can libbpf load the maps via filesystem, and
+	 * replace those in the ELF object before giving BPF-prog to
+	 * the kernel?!
+	 *
+	 * Like bpf_load.c did with:
+	 *  load_bpf_file_fixup_map(filename, pre_load_maps_via_fs)
+	 */
+	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
+		return EXIT_FAIL;
+
+	if (!prog_fd) {
+		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
 		return EXIT_FAIL;
 	}
 
-	if (!prog_fd[0]) {
-		printf("load_bpf_file: %s\n", strerror(errno));
-		return 1;
-	}
-
 	/* Export maps that were not loaded from filesystem */
-	export_maps();
+	// TODO: Missing export_maps();
+	// Look at libbpf API:
+	//  bpf_map__pin(struct bpf_map *map, const char *path);
+	//
+	map = bpf_object__find_map_by_name(obj, "ip_hash");
+	if (!map) {
+		fprintf(stderr, "ERR: cannot find map\n");
+		return EXIT_FAIL;
+	}
+	err = bpf_map__pin(map, file_ip_hash);
+	if (err < 0)
+		return EXIT_FAIL;
 
 	if (owner >= 0)
-		chown_maps(owner, group);
+		chown_maps(owner, group, file_ip_hash);
+
+	if (init_map_fds(obj) < 0) {
+		fprintf(stderr, "bpf_object__find_map_fd_by_name failed\n");
+		return EXIT_FAIL;
+	}
+	mark_cpus_unavailable();
 
 	printf("added_cpus %i\n",added_cpus);
-	mark_cpus_unavailable();
-	int i;
 	for (i = 0; i < added_cpus; i++) {
 		create_cpu_entry(cpus[i], qsize, i, true);
 	}
@@ -499,12 +460,12 @@ int main(int argc, char **argv)
 	//	create_cpu_entry(i, qsize, i, true);
 	//}
 	/* Set lan or wan direction */
-	/* map_fd[5]: cpu_direction */
-	if (bpf_map_update_elem(map_fd[5], &ifindex, &dir, 0) < 0) {
+	/* map_fd[4]: cpu_direction */
+	if (bpf_map_update_elem(cpu_direction_map_fd, &ifindex, &dir, 0) < 0) {
 		printf("Create CPU direction failed \n");
 		return (EXIT_FAIL_BPF);
 	}
-	if (bpf_set_link_xdp_fd(ifindex, prog_fd[0], xdp_flags) < 0) {
+	if (bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags) < 0) {
 		printf("link set xdp fd failed\n");
 		return EXIT_FAIL_XDP;
 	}

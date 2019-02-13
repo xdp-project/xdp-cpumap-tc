@@ -28,10 +28,7 @@ static const char *file_cpu_map = "/sys/fs/bpf/file_cpu_map";
 static const char *file_ip_hash = "/sys/fs/bpf/file_ip_hash";
 static const char *file_cpus_available = "/sys/fs/bpf/file_cpus_available";
 static const char *file_cpus_count = "/sys/fs/bpf/file_cpus_count";
-static const char *file_cpus_iterator = "/sys/fs/bpf/file_cpus_iterator";
 static const char *file_cpu_direction = "/sys/fs/bpf/file_cpu_direction";
-
-
 
 /* Iphash operations */
 #define ACTION_ADD	(1 << 0)
