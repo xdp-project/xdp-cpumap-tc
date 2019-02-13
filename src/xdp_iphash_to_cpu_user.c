@@ -56,7 +56,7 @@ static int cpu_direction_map_fd  = -1;
 static int init_map_fds(struct bpf_object *obj)
 {
 	cpu_map_fd            = bpf_object__find_map_fd_by_name(obj, "cpu_map");
-	ip_hash_map_fd        = bpf_object__find_map_fd_by_name(obj, "rx_cnt");
+	ip_hash_map_fd        = bpf_object__find_map_fd_by_name(obj, "ip_hash");
 	cpus_available_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_available");
 	cpus_count_map_fd     = bpf_object__find_map_fd_by_name(obj, "cpus_count");
 	cpu_direction_map_fd  = bpf_object__find_map_fd_by_name(obj, "cpu_direction");
