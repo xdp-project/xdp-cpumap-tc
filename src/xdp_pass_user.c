@@ -3,6 +3,7 @@ static const char *__doc__ = "Simple XDP prog doing XDP_PASS\n";
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <errno.h>
 #include <getopt.h>
@@ -19,11 +20,12 @@ static char *ifname;
 static __u32 xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST;
 
 static const struct option long_options[] = {
-        {"help",        no_argument,            NULL, 'h' },
-        {"dev",         required_argument,      NULL, 'd' },
-        {"skb-mode",    no_argument,            NULL, 'S' },
-        {"native-mode", no_argument,            NULL, 'N' },
-        {"force",       no_argument,            NULL, 'F' },
+        {"help",        no_argument,		NULL, 'h' },
+        {"dev",         required_argument,	NULL, 'd' },
+        {"skb-mode",    no_argument,		NULL, 'S' },
+        {"native-mode", no_argument,		NULL, 'N' },
+        {"force",       no_argument,		NULL, 'F' },
+        {"unload",      no_argument,		NULL, 'U' },
         {0, 0, NULL,  0 }
 };
 
@@ -53,12 +55,26 @@ static void usage(char *argv[])
 #define EXIT_FAIL_OPTION	2
 #define EXIT_FAIL_XDP		3
 
+static int xdp_unload(int ifindex_unload)
+{
+	int err;
+
+	if ((err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags)) < 0) {
+                fprintf(stderr, "ERR: link set xdp unload failed (err=%d):%s\n",
+			err, strerror(-err));
+                return EXIT_FAIL_XDP;
+        }
+}
+
+
+
 int main(int argc, char **argv)
 {
 	struct bpf_prog_info info = {};
 	__u32 info_len = sizeof(info);
 	struct bpf_object *obj;
 	int prog_fd, opt, err;
+	bool unload = false;
 	char filename[256];
 	int longindex = 0;
 
@@ -94,6 +110,9 @@ int main(int argc, char **argv)
 		case 'F':
 			xdp_flags &= ~XDP_FLAGS_UPDATE_IF_NOEXIST;
 			break;
+		case 'U':
+			unload = true;
+			break;
 		case 'h':
 		error:
 		default:
@@ -107,6 +126,8 @@ int main(int argc, char **argv)
 		usage(argv);
 		return EXIT_FAIL_OPTION;
 	}
+	if (unload)
+		return xdp_unload(ifindex);
 
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
         prog_load_attr.file = filename;
