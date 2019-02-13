@@ -37,6 +37,7 @@ clean:
 	rm -f $(XDP_OBJ)
 	rm -f $(USER_OBJ)
 	rm -f *.ll
+	rm -f *~
 
 llvm-check: $(CLANG) $(LLC)
 	@for TOOL in $^ ; do \
