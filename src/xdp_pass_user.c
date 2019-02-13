@@ -14,7 +14,8 @@ static const char *__doc__ = "Simple XDP prog doing XDP_PASS\n";
 #include <net/if.h>
 
 /* From libbpf to not depend on kernel-headers */
-#include <uapi/linux/if_link.h>
+//#include <uapi/linux/if_link.h>
+#include <linux/if_link.h>
 
 static int ifindex = -1;
 static char ifname_buf[IF_NAMESIZE];

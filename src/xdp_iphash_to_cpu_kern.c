@@ -1,12 +1,21 @@
-#include <uapi/linux/bpf.h>
-#include <uapi/linux/if_ether.h>
-#include <uapi/linux/if_packet.h>
-#include <uapi/linux/if_vlan.h>
-#include <uapi/linux/ip.h>
-#include <uapi/linux/in.h>
-#include <uapi/linux/tcp.h>
-#include <uapi/linux/udp.h>
+//#include <linux/types.h>
+#include <stdbool.h>
+
+#include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <linux/if_vlan.h>
+#include <linux/ip.h>
+#include <linux/in.h>
+#include <linux/tcp.h>
+#include <linux/udp.h>
+
 #include "bpf_helpers.h"
+#include "bpf_endian.h"
+
+#define u16 __u16
+#define u32 __u32
+#define u64 __u64
 
 /* Interface direction WARNING - sync with _user.c */
 #define INTERFACE_WAN      (1 << 0)
@@ -82,14 +91,15 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 		return false;
 
 	eth_type = eth->h_proto;
-	bpf_debug("Debug: eth_type:0x%x\n", ntohs(eth_type));
+	bpf_debug("Debug: eth_type:0x%x\n", bpf_ntohs(eth_type));
 
 	/* Skip non 802.3 Ethertypes */
-	if (unlikely(ntohs(eth_type) < ETH_P_802_3_MIN))
+	if (bpf_ntohs(eth_type) < ETH_P_802_3_MIN)
 		return false;
 
 	/* Handle VLAN tagged packet */
-	if (eth_type == htons(ETH_P_8021Q) || eth_type == htons(ETH_P_8021AD)) {
+	if (eth_type == bpf_htons(ETH_P_8021Q) ||
+	    eth_type == bpf_htons(ETH_P_8021AD)) {
 		struct vlan_hdr *vlan_hdr;
 
 		vlan_hdr = (void *)eth + offset;
@@ -99,7 +109,8 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 		eth_type = vlan_hdr->h_vlan_encapsulated_proto;
 	}
 	/* Handle double VLAN tagged packet */
-	if (eth_type == htons(ETH_P_8021Q) || eth_type == htons(ETH_P_8021AD)) {
+	if (eth_type == bpf_htons(ETH_P_8021Q) ||
+	    eth_type == bpf_htons(ETH_P_8021AD)) {
 		struct vlan_hdr *vlan_hdr;
 
 		vlan_hdr = (void *)eth + offset;
@@ -109,7 +120,7 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 		eth_type = vlan_hdr->h_vlan_encapsulated_proto;
 	}
 
-	*eth_proto = ntohs(eth_type);
+	*eth_proto = bpf_ntohs(eth_type);
 	*l3_offset = offset;
 	return true;
 }
@@ -120,7 +131,6 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
 	struct iphdr *iph = data + l3_offset;
-	u64 *value;
 	u32 *direction_lookup;
 	u32 direction;
 	u32 ip; /* type need to match map */
@@ -153,7 +163,7 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	if (!cpu_idx_lookup) {
 		bpf_debug("cant find cpu_idx_lookup\n");
 		// 0.0.0.0 is for default traffic
-		ip = ntohl(0);
+		ip = bpf_ntohl(0);
 		cpu_idx_lookup = bpf_map_lookup_elem(&ip_hash, &ip);
 		if (!cpu_idx_lookup) {
 			bpf_debug("cant find default cpu_idx_lookup\n");

@@ -20,8 +20,10 @@ CFLAGS += -I../headers/
 LDFLAGS ?= -L$(LIBBPF_DIR)
 
 # Watchout if using libbpf include files is a bad dependency
-LIBBPF_INC = ../libbpf/include/
-CFLAGS += -I$(LIBBPF_INC)
+# BAD: result in:
+#  error: unknown type name '__sum16'
+#LIBBPF_INC = ../libbpf/include/
+#CFLAGS += -I$(LIBBPF_INC)
 
 LIBS = -lbpf -lelf
 
