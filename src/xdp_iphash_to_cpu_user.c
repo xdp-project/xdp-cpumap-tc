@@ -30,7 +30,6 @@ static const char *__doc__=
 #include <libgen.h>  /* dirname */
 
 #include <arpa/inet.h>
-//#include <uapi/linux/if_link.h>
 #include <linux/if_link.h>
 
 #include <bpf/bpf.h>
