@@ -18,6 +18,10 @@ CFLAGS ?= -I$(LIBBPF_DIR)/root/usr/include/
 CFLAGS += -I../headers/
 LDFLAGS ?= -L$(LIBBPF_DIR)
 
+# Watchout if using libbpf include files is a bad dependency
+LIBBPF_INC = ../libbpf/include/
+CFLAGS += -I$(LIBBPF_INC)
+
 LIBS = -lbpf -lelf
 
 all: llvm-check $(TARGET) $(XDP_OBJ)
