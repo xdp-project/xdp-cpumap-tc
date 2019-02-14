@@ -57,6 +57,10 @@ $(OBJECT_LIBBPF):
 		mkdir -p root; DESTDIR=root $(MAKE) install_headers; \
 	fi
 
+# Define dependencies to other files
+xdp_iphash_to_cpu_kern.o: xdp_iphash_to_cpu_common.h
+xdp_iphash_to_cpu:        xdp_iphash_to_cpu_common.h
+
 $(TARGET): %: %_user.c $(OBJECT_LIBBPF) Makefile
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
 
