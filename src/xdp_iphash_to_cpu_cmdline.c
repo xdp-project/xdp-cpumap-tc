@@ -20,8 +20,9 @@ static const char *__doc__=
 
 /* libbpf.h defines bpf_* function helpers for syscalls,
  * indirectly via ./tools/lib/bpf/bpf.h */
-#include "bpf/libbpf.h"
-#include "bpf_util.h"
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+#include <bpf_util.h>
 #include "xdp_iphash_to_cpu_common.h"
 
 static const struct option long_options[] = {
