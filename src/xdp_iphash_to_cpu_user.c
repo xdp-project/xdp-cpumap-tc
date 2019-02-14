@@ -272,6 +272,18 @@ void chown_maps(uid_t owner, gid_t group, const char *file)
 			file, errno, strerror(errno));
 }
 
+int open_bpf_map(const char *file)
+{
+	int fd;
+
+	fd = bpf_obj_get(file);
+	if (fd < 0) {
+		printf("WARN: Failed to open bpf map file:%s err(%d):%s\n",
+		       file, errno, strerror(errno));
+	}
+	return fd;
+}
+
 int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
@@ -292,13 +304,19 @@ int main(int argc, char **argv)
 	int i;
 
 	/* libbpf */
-	struct bpf_prog_load_attr prog_load_attr = {
-		.prog_type      = BPF_PROG_TYPE_XDP,
+//	struct bpf_prog_load_attr prog_load_attr = {
+//		.prog_type      = BPF_PROG_TYPE_XDP,
+//	};
+	struct bpf_object_open_attr prog_open_attr = {
+		.prog_type	= BPF_PROG_TYPE_XDP,
 	};
+
 	struct bpf_prog_info info = {};
 	__u32 info_len = sizeof(info);
+	struct bpf_program * bpf_prog;
 	struct bpf_object *obj;
 	struct bpf_map *map;
+	int pinned_file_fd;
 	int prog_fd;
 
 	/* Notice: choosing the queue size is very important with the
@@ -310,7 +328,7 @@ int main(int argc, char **argv)
 	qsize = 128+64;
 
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
-	prog_load_attr.file = filename;
+	prog_open_attr.file = filename;
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "hSrqdwlc:",
@@ -419,9 +437,17 @@ int main(int argc, char **argv)
 	 * Like bpf_load.c did with:
 	 *  load_bpf_file_fixup_map(filename, pre_load_maps_via_fs)
 	 */
-	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
-		return EXIT_FAIL;
+//	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
+//		return EXIT_FAIL;
 
+	obj = bpf_object__open_xattr(&prog_open_attr);
+	if (!obj) {
+		fprintf(stderr, "ERR: bpf_object__open_xattr: %s\n", strerror(errno));
+		return EXIT_FAIL_MAP_FILE;
+	}
+
+	bpf_prog = bpf_program__next(NULL, obj);
+	prog_fd = bpf_program__fd(bpf_prog);
 	if (!prog_fd) {
 		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
 		return EXIT_FAIL;
@@ -437,9 +463,26 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERR: cannot find map\n");
 		return EXIT_FAIL;
 	}
-	err = bpf_map__pin(map, file_ip_hash);
-	if (err < 0)
-		return EXIT_FAIL;
+
+	pinned_file_fd = open_bpf_map(file_ip_hash);
+	if (pinned_file_fd < 0) {
+		/* No pinned file, lets pin the file */
+		fprintf(stderr, "INFO: pin ip_hash map: %s\n", file_ip_hash);
+		err = bpf_map__pin(map, file_ip_hash);
+		if (err) {
+			fprintf(stderr, "ERR: cannot pin: %s\n", strerror(errno));
+			return EXIT_FAIL;
+		}
+	} else {
+		/* Use pinned_file_fd instead */
+		err = bpf_map__reuse_fd(map, pinned_file_fd);
+	}
+
+	err = bpf_object__load(obj);
+	if (err) {
+		bpf_object__close(obj);
+		return -EINVAL;
+	}
 
 	if (owner >= 0)
 		chown_maps(owner, group, file_ip_hash);
