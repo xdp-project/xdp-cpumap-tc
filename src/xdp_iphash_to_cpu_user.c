@@ -469,10 +469,18 @@ int main(int argc, char **argv)
 		printf("link set xdp fd failed\n");
 		return EXIT_FAIL_XDP;
 	}
+
+	err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_len);
+	if (err) {
+		fprintf(stderr, "ERR: can't get prog info - %s\n",
+			strerror(errno));
+		return err;
+	}
+
 	if (verbose) {
 		printf("Documentation:\n%s\n", __doc__);
-		printf(" - Attached to device:%s (ifindex:%d)\n",
-		       ifname, ifindex);
+		printf(" - Attached to device:%s (ifindex:%d) prog_id:%d\n",
+		       ifname, ifindex, info.id);
 	}
 
 	return EXIT_OK;
