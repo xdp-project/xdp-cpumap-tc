@@ -430,40 +430,24 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	/* ISSUE: How can libbpf load the maps via filesystem, and
-	 * replace those in the ELF object before giving BPF-prog to
-	 * the kernel?!
-	 *
-	 * Like bpf_load.c did with:
-	 *  load_bpf_file_fixup_map(filename, pre_load_maps_via_fs)
+	/*
+	 * Instead of using bpf_prog_load_xattr(), go through the
+	 * steps bpf_object__open + bpf_object__load and in-between,
+	 * load a pinned map file that the program should use
 	 */
-//	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
-//		return EXIT_FAIL;
-
 	obj = bpf_object__open_xattr(&prog_open_attr);
 	if (!obj) {
 		fprintf(stderr, "ERR: bpf_object__open_xattr: %s\n", strerror(errno));
 		return EXIT_FAIL_MAP_FILE;
 	}
 
-	bpf_prog = bpf_program__next(NULL, obj);
-	prog_fd = bpf_program__fd(bpf_prog);
-	if (!prog_fd) {
-		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
-		return EXIT_FAIL;
-	}
-
-	/* Export maps that were not loaded from filesystem */
-	// TODO: Missing export_maps();
-	// Look at libbpf API:
-	//  bpf_map__pin(struct bpf_map *map, const char *path);
-	//
 	map = bpf_object__find_map_by_name(obj, "ip_hash");
 	if (!map) {
 		fprintf(stderr, "ERR: cannot find map\n");
 		return EXIT_FAIL;
 	}
 
+	/* Reuse pinned map file, if available, else create pinned file */
 	pinned_file_fd = open_bpf_map(file_ip_hash);
 	if (pinned_file_fd < 0) {
 		/* No pinned file, lets pin the file */
@@ -476,12 +460,27 @@ int main(int argc, char **argv)
 	} else {
 		/* Use pinned_file_fd instead */
 		err = bpf_map__reuse_fd(map, pinned_file_fd);
+		fprintf(stderr, "INFO: pin ip_hash map: %s\n", file_ip_hash);
 	}
+
+	bpf_prog = bpf_program__next(NULL, obj);
+	if (!bpf_prog) {
+		fprintf(stderr, "ERR: cannot find first prog: %s\n", strerror(errno));
+		return EXIT_FAIL;
+	}
+	bpf_program__set_type(bpf_prog, prog_open_attr.prog_type);
 
 	err = bpf_object__load(obj);
 	if (err) {
+		fprintf(stderr, "ERR: bpf_object__load: %s\n", strerror(errno));
 		bpf_object__close(obj);
 		return -EINVAL;
+	}
+
+	prog_fd = bpf_program__fd(bpf_prog);
+	if (!prog_fd) {
+		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
+		return EXIT_FAIL;
 	}
 
 	if (owner >= 0)
