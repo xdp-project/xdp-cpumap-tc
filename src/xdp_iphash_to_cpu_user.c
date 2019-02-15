@@ -449,18 +449,10 @@ int main(int argc, char **argv)
 
 	/* Reuse pinned map file, if available, else create pinned file */
 	pinned_file_fd = open_bpf_map(file_ip_hash);
-	if (pinned_file_fd < 0) {
-		/* No pinned file, lets pin the file */
-		fprintf(stderr, "INFO: pin ip_hash map: %s\n", file_ip_hash);
-		err = bpf_map__pin(map, file_ip_hash);
-		if (err) {
-			fprintf(stderr, "ERR: cannot pin: %s\n", strerror(errno));
-			return EXIT_FAIL;
-		}
-	} else {
+	if (pinned_file_fd > 0) {
 		/* Use pinned_file_fd instead */
 		err = bpf_map__reuse_fd(map, pinned_file_fd);
-		fprintf(stderr, "INFO: pin ip_hash map: %s\n", file_ip_hash);
+		fprintf(stderr, "INFO: using pinned ip_hash map: %s\n", file_ip_hash);
 	}
 
 	bpf_prog = bpf_program__next(NULL, obj);
@@ -481,6 +473,16 @@ int main(int argc, char **argv)
 	if (!prog_fd) {
 		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
 		return EXIT_FAIL;
+	}
+
+	if (pinned_file_fd < 0) {
+		/* No pinned file, lets pin the file */
+		fprintf(stderr, "INFO: pin ip_hash map: %s\n", file_ip_hash);
+		err = bpf_map__pin(map, file_ip_hash);
+		if (err) {
+			fprintf(stderr, "ERR: cannot pin: %s\n", strerror(errno));
+			return EXIT_FAIL;
+		}
 	}
 
 	if (owner >= 0)
