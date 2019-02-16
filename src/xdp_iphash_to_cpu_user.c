@@ -99,10 +99,8 @@ static const char* map_idx_to_export_filename(int idx)
 	return file;
 }
 
-static int create_cpu_entry(__u32 cpu, __u32 queue_size,
-			    __u32 avail_idx, bool new)
+static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 {
-	printf ("cpu %d idx %d\n", cpu, avail_idx);
 	__u32 curr_cpus_count = 0;
 	__u32 key = 0;
 	int ret;
@@ -117,57 +115,49 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size,
 	}
 
 	/* Inform bpf_prog's that a new CPU is available to select
-	 * from via some control maps.
+	 * from via another maps, because eBPF prog side cannot lookup
+	 * directly in cpu_map.
 	 */
 	/* map_fd[2] = cpus_available */
-	ret = bpf_map_update_elem(cpus_available_map_fd, &avail_idx, &cpu, 0);
+	ret = bpf_map_update_elem(cpus_available_map_fd, &cpu, &cpu, 0);
 	if (ret) {
 		fprintf(stderr, "Add to avail CPUs failed\n");
 		exit(EXIT_FAIL_BPF);
 	}
 
-	/* When not replacing/updating existing entry, bump the count */
-	/* map_fd[3] = cpus_count */
-	ret = bpf_map_lookup_elem(cpus_count_map_fd, &key, &curr_cpus_count);
-	if (ret) {
-		fprintf(stderr, "Failed reading curr cpus_count\n");
-		exit(EXIT_FAIL_BPF);
-	}
-	if (new) {
-		curr_cpus_count++;
-		ret = bpf_map_update_elem(cpus_count_map_fd,
-					  &key, &curr_cpus_count, 0);
-		if (ret) {
-			fprintf(stderr, "Failed write curr cpus_count\n");
-			exit(EXIT_FAIL_BPF);
-		}
-	}
-	if (verbose) {
-		printf("%s CPU:%u as idx:%u queue_size:%d (total cpus_count:%u)\n",
-	       	new ? "Add-new":"Replace", cpu, avail_idx,
-	       	queue_size, curr_cpus_count);
-	}
+	if (verbose)
+		printf("Added CPU:%u queue_size:%d\n", cpu, queue_size);
+
 	return 0;
 }
 
-/* CPUs are zero-indexed. Thus, add a special sentinel default value
- * in map cpus_available to mark CPU index'es not configured
+/* CPUs are zero-indexed. A special sentinel default value in map
+ * cpus_available to mark CPU index'es not configured
  */
-static void mark_cpus_unavailable(void)
+static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size)
 {
 	__u32 invalid_cpu = MAX_CPUS;
+	__u32 cpu_value;
 	int ret, i;
 
 	for (i = 0; i < MAX_CPUS; i++) {
-		/* map_fd[2] = cpus_available */
-		ret = bpf_map_update_elem(cpus_available_map_fd,
-					  &i, &invalid_cpu, 0);
-		if (ret) {
-			fprintf(stderr, "Failed marking CPU unavailable\n");
-			exit(EXIT_FAIL_BPF);
+
+		if (cpus[i] == true) {
+			create_cpu_entry(i, queue_size);
+		} else {
+			cpu_value = invalid_cpu;
+
+			/* map_fd[2] = cpus_available */
+			ret = bpf_map_update_elem(cpus_available_map_fd,
+						  &i, &invalid_cpu, 0);
+			if (ret) {
+				fprintf(stderr, "Failed marking CPU unavailable\n");
+				exit(EXIT_FAIL_BPF);
+			}
 		}
 	}
 }
+
 
 static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 {
@@ -287,6 +277,7 @@ int open_bpf_map(const char *file)
 int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
+	bool cpus[MAX_CPUS] = { false };
 	bool rm_xdp_prog = false;
 	struct passwd *pwd = NULL;
 	__u32 xdp_flags = 0;
@@ -298,7 +289,6 @@ int main(int argc, char **argv)
 	int dir = 0;
 	int added_cpus = 0;
 	int add_cpu = -1;
-	int cpus[MAX_CPUS];
 	int err;
 	int opt;
 	int i;
@@ -392,7 +382,7 @@ int main(int argc, char **argv)
 					errno, strerror(errno));
 				goto error;
 			}
-			cpus[added_cpus] = add_cpu;
+			cpus[add_cpu] = true;
 			added_cpus++;
 			break;
 		case 'h':
@@ -492,12 +482,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "bpf_object__find_map_fd_by_name failed\n");
 		return EXIT_FAIL;
 	}
-	mark_cpus_unavailable();
 
-	printf("added_cpus %i\n",added_cpus);
-	for (i = 0; i < added_cpus; i++) {
-		create_cpu_entry(cpus[i], qsize, i, true);
-	}
+	/* The CPUMAP type doesn't allow to bpf_map_lookup_elem (from
+	 * eBPF prog side _kern.c). Thus, maintain another map that
+	 * says if a CPU is avail for redirect.
+	 */
+	mark_cpus_available(cpus, qsize);
+
 	// add all configured cpus
 	//int i;
 	//for (i = 0; i < get_nprocs_conf(); i++) {
