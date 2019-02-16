@@ -57,6 +57,7 @@ static const struct option long_options[] = {
 	{"quiet",	no_argument,		NULL, 'q' },
 	{"owner",	required_argument,	NULL, 'o' },
 	{"skb-mode",	no_argument,		NULL, 'S' },
+	{"all-cpus",	no_argument,		NULL, 'a' },
 	{0, 0, NULL,  0 }
 };
 
@@ -137,11 +138,17 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 /* CPUs are zero-indexed. A special sentinel default value in map
  * cpus_available to mark CPU index'es not configured
  */
-static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size)
+static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_all_cpu)
 {
+	unsigned int possible_cpus = bpf_num_possible_cpus();
 	__u32 invalid_cpu = MAX_CPUS;
 	__u32 cpu_value;
 	int ret, i;
+
+	/* add all available CPUs in system  */
+	if (add_all_cpu == true)
+		for (i = 0; i < possible_cpus; i++)
+			cpus[i] = true;
 
 	for (i = 0; i < MAX_CPUS; i++) {
 
@@ -160,7 +167,6 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size)
 		}
 	}
 }
-
 
 static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 {
@@ -248,6 +254,7 @@ int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
 	bool cpus[MAX_CPUS] = { false };
+	bool add_all_cpus = true; /* Default add all CPU if no-others are provided */
 	bool rm_xdp_prog = false;
 	struct passwd *pwd = NULL;
 	__u32 xdp_flags = 0;
@@ -341,7 +348,10 @@ int main(int argc, char **argv)
 			}
 			dir = INTERFACE_LAN;
 			break;
+		case 'a':
+			add_all_cpus = true;
 		case 'c':
+			add_all_cpus = false;
 			add_cpu = strtoul(optarg, NULL, 0);
 			if (add_cpu >= MAX_CPUS) {
 				fprintf(stderr,
@@ -370,12 +380,6 @@ int main(int argc, char **argv)
 		return EXIT_OK;
 	}
 	/* Required option */
-	if (add_cpu == -1) {
-		fprintf(stderr, "ERR: required option --cpu missing\n");
-		fprintf(stderr, " Specify multiple --cpu option to add more\n");
-		usage(argv);
-		return EXIT_FAIL_OPTION;
-	}
 	if (dir == 0) {
 		fprintf(stderr,"ERR: set either --wan or --lan\n");
 		goto error;
@@ -454,13 +458,8 @@ int main(int argc, char **argv)
 	 * eBPF prog side _kern.c). Thus, maintain another map that
 	 * says if a CPU is avail for redirect.
 	 */
-	mark_cpus_available(cpus, qsize);
+	mark_cpus_available(cpus, qsize, add_all_cpus);
 
-	// add all configured cpus
-	//int i;
-	//for (i = 0; i < get_nprocs_conf(); i++) {
-	//	create_cpu_entry(i, qsize, i, true);
-	//}
 	/* Set lan or wan direction */
 	/* map_fd[4]: cpu_direction */
 	if (bpf_map_update_elem(cpu_direction_map_fd, &ifindex, &dir, 0) < 0) {
