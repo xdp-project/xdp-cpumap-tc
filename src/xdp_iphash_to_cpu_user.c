@@ -1,5 +1,5 @@
 static const char *__doc__=
- " XDP: Simple IPv4 to cpu hash\n"
+ " XDP: Lookup IPv4 and redirect to CPU hash\n"
  "\n"
  "This program loads the XDP eBPF program into the kernel.\n"
  "Use the cmdline tool for add/removing dest IPs to the has\n"
@@ -67,36 +67,6 @@ static int init_map_fds(struct bpf_object *obj)
 		return -ENOENT;
 
 	return 0;
-}
-
-#define NR_MAPS 6
-int maps_marked_for_export[NR_MAPS] = { 0 };
-
-static const char* map_idx_to_export_filename(int idx)
-{
-	const char *file = NULL;
-
-	/* Mapping map_fd[idx] to export filenames */
-	switch (idx) {
-	case 0: /* map_fd[0]: cpu_map */
-		file =   file_cpu_map;
-		break;
-	case 1: /* map_fd[1]: ip_hash */
-		file =   file_ip_hash;
-		break;
-	case 2: /* map_fd[2]: cpus_available */
-		file =   file_cpus_available;
-		break;
-	case 3: /* map_fd[3]: cpus_count */
-		file =   file_cpus_count;
-		break;
-	case 4: /* map_fd[4]: cpu_direction */
-		file =   file_cpu_direction;
-		break;
-	default:
-		break;
-	}
-	return file;
 }
 
 static int create_cpu_entry(__u32 cpu, __u32 queue_size)
@@ -294,9 +264,6 @@ int main(int argc, char **argv)
 	int i;
 
 	/* libbpf */
-//	struct bpf_prog_load_attr prog_load_attr = {
-//		.prog_type      = BPF_PROG_TYPE_XDP,
-//	};
 	struct bpf_object_open_attr prog_open_attr = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
 	};
