@@ -2,7 +2,7 @@ static const char *__doc__=
  " XDP: Lookup IPv4 and redirect to CPU hash\n"
  "\n"
  "This program loads the XDP eBPF program into the kernel.\n"
- "Use the cmdline tool for add/removing dest IPs to the has\n"
+ "Use the cmdline tool for add/removing dest IPs to the hash\n"
  ;
 
 #include <linux/bpf.h>
@@ -178,7 +178,7 @@ static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 
 	/* Remove exported map files */
 	if (unlink(file) < 0) {
-		printf("WARN: cannot rm map file:%s err(%d):%s\n",
+		fprintf(stderr, "WARN: cannot rm map file:%s err(%d):%s\n",
 		       file, errno, strerror(errno));
 	}
 }
@@ -413,7 +413,7 @@ int main(int argc, char **argv)
 		}
 	}
 	if (ifindex == -1) {
-		printf("ERR: required option --dev missing");
+		fprintf(stderr, "ERR: required option --dev missing");
 		usage(argv);
 		return EXIT_FAIL_OPTION;
 	}
@@ -506,11 +506,11 @@ int main(int argc, char **argv)
 	/* Set lan or wan direction */
 	/* map: cpu_direction */
 	if (bpf_map_update_elem(cpu_direction_map_fd, &ifindex, &dir, 0) < 0) {
-		printf("Create CPU direction failed \n");
+		fprintf(stderr, "ERR: create CPU direction failed \n");
 		return (EXIT_FAIL_BPF);
 	}
-	if (bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags) < 0) {
-		printf("link set xdp fd failed\n");
+	if ((err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags)) < 0) {
+		fprintf(stderr, "ERR: link set xdp fd failed (err:%d)\n", err);
 		return EXIT_FAIL_XDP;
 	}
 
@@ -529,4 +529,3 @@ int main(int argc, char **argv)
 
 	return EXIT_OK;
 }
-
