@@ -84,7 +84,6 @@ static void usage(char *argv[])
 static int cpu_map_fd = -1;
 static int ip_hash_map_fd = -1;
 static int cpus_available_map_fd  = -1;
-static int cpus_count_map_fd = -1;
 static int cpu_direction_map_fd  = -1;
 
 static int init_map_fds(struct bpf_object *obj)
@@ -92,12 +91,10 @@ static int init_map_fds(struct bpf_object *obj)
 	cpu_map_fd            = bpf_object__find_map_fd_by_name(obj, "cpu_map");
 	ip_hash_map_fd        = bpf_object__find_map_fd_by_name(obj, "ip_hash");
 	cpus_available_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_available");
-	cpus_count_map_fd     = bpf_object__find_map_fd_by_name(obj, "cpus_count");
 	cpu_direction_map_fd  = bpf_object__find_map_fd_by_name(obj, "cpu_direction");
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
-	    cpus_available_map_fd < 0 ||
-	    cpus_count_map_fd < 0 || cpu_direction_map_fd < 0)
+	    cpus_available_map_fd < 0 || cpu_direction_map_fd < 0)
 		return -ENOENT;
 
 	return 0;
@@ -105,13 +102,12 @@ static int init_map_fds(struct bpf_object *obj)
 
 static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 {
-	__u32 curr_cpus_count = 0;
-	__u32 key = 0;
 	int ret;
+
 	/* Add a CPU entry to cpumap, as this allocate a cpu entry in
 	 * the kernel for the cpu.
 	 */
-	/* map_fd[0]: cpu_map */
+	/* map: cpu_map */
 	ret = bpf_map_update_elem(cpu_map_fd, &cpu, &queue_size, 0);
 	if (ret) {
 		fprintf(stderr, "Create CPU entry failed (err:%d)\n", ret);
@@ -122,7 +118,7 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 	 * from via another maps, because eBPF prog side cannot lookup
 	 * directly in cpu_map.
 	 */
-	/* map_fd[2] = cpus_available */
+	/* map = cpus_available */
 	ret = bpf_map_update_elem(cpus_available_map_fd, &cpu, &cpu, 0);
 	if (ret) {
 		fprintf(stderr, "Add to avail CPUs failed\n");
@@ -157,7 +153,7 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_
 		} else {
 			cpu_value = invalid_cpu;
 
-			/* map_fd[2] = cpus_available */
+			/* map: cpus_available */
 			ret = bpf_map_update_elem(cpus_available_map_fd,
 						  &i, &invalid_cpu, 0);
 			if (ret) {
@@ -461,7 +457,7 @@ int main(int argc, char **argv)
 	mark_cpus_available(cpus, qsize, add_all_cpus);
 
 	/* Set lan or wan direction */
-	/* map_fd[4]: cpu_direction */
+	/* map: cpu_direction */
 	if (bpf_map_update_elem(cpu_direction_map_fd, &ifindex, &dir, 0) < 0) {
 		printf("Create CPU direction failed \n");
 		return (EXIT_FAIL_BPF);
