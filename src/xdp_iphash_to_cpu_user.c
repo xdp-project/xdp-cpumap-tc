@@ -47,6 +47,39 @@ static char ifname_buf[IF_NAMESIZE];
 static char *ifname = NULL;
 static int ifindex = -1;
 
+static const struct option long_options[] = {
+	{"help",	no_argument,		NULL, 'h' },
+	{"remove",	no_argument,		NULL, 'r' },
+	{"dev",		required_argument,	NULL, 'd' },
+	{"wan",		no_argument,		NULL, 'w' },
+	{"lan",		no_argument,		NULL, 'l' },
+	{"cpu",		required_argument,	NULL, 'c' },
+	{"quiet",	no_argument,		NULL, 'q' },
+	{"owner",	required_argument,	NULL, 'o' },
+	{"skb-mode",	no_argument,		NULL, 'S' },
+	{0, 0, NULL,  0 }
+};
+
+static void usage(char *argv[])
+{
+	int i;
+	printf("\nDOCUMENTATION:\n%s\n", __doc__);
+	printf(" Usage: %s (options-see-below)\n",
+	       argv[0]);
+	printf(" Listing options:\n");
+	for (i = 0; long_options[i].name != 0; i++) {
+		printf(" --%-12s", long_options[i].name);
+		if (long_options[i].flag != NULL)
+			printf(" flag (internal value:%d)",
+			       *long_options[i].flag);
+		else
+			printf(" short-option: -%c",
+			       long_options[i].val);
+		printf("\n");
+	}
+	printf("\n");
+}
+
 static int cpu_map_fd = -1;
 static int ip_hash_map_fd = -1;
 static int cpus_available_map_fd  = -1;
@@ -146,39 +179,6 @@ static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 		printf("WARN: cannot rm map file:%s err(%d):%s\n",
 		       file, errno, strerror(errno));
 	}
-}
-
-static const struct option long_options[] = {
-	{"help",	no_argument,		NULL, 'h' },
-	{"remove",	no_argument,		NULL, 'r' },
-	{"dev",		required_argument,	NULL, 'd' },
-	{"wan",		no_argument,		NULL, 'w' },
-	{"lan",		no_argument,		NULL, 'l' },
-	{"cpu",		required_argument,	NULL, 'c' },
-	{"quiet",	no_argument,		NULL, 'q' },
-	{"owner",	required_argument,	NULL, 'o' },
-	{"skb-mode",	no_argument,		NULL, 'S' },
-	{0, 0, NULL,  0 }
-};
-
-static void usage(char *argv[])
-{
-	int i;
-	printf("\nDOCUMENTATION:\n%s\n", __doc__);
-	printf(" Usage: %s (options-see-below)\n",
-	       argv[0]);
-	printf(" Listing options:\n");
-	for (i = 0; long_options[i].name != 0; i++) {
-		printf(" --%-12s", long_options[i].name);
-		if (long_options[i].flag != NULL)
-			printf(" flag (internal value:%d)",
-			       *long_options[i].flag);
-		else
-			printf(" short-option: -%c",
-			       long_options[i].val);
-		printf("\n");
-	}
-	printf("\n");
 }
 
 #ifndef BPF_FS_MAGIC
