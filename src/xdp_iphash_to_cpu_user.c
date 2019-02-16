@@ -246,6 +246,48 @@ int open_bpf_map(const char *file)
 	return fd;
 }
 
+bool locate_kern_object(char *execname, char *filename, size_t size)
+{
+	char *basec, *bname;
+
+	snprintf(filename, size, "%s_kern.o", execname);
+
+	if (access(filename, F_OK) != -1 )
+		return true;
+
+	/* Cannot find the _kern.o ELF object file directly.
+	 * Lets start searching for it in different paths.
+	 */
+	basec = strdup(execname);
+	if (basec == NULL)
+		return false;
+	bname = basename(basec);
+
+	/* Maybe enough to add a "./" */
+	snprintf(filename, size, "./%s_kern.o", bname);
+	if (access( filename, F_OK ) != -1 ) {
+		free(basec);
+		return true;
+	}
+
+	/* Maybe /usr/local/lib/ */
+	snprintf(filename, size, "/usr/local/lib/%s_kern.o", bname);
+	if (access( filename, F_OK ) != -1 ) {
+		free(basec);
+		return true;
+	}
+
+	/* Maybe /usr/local/bin/ */
+	snprintf(filename, size, "/usr/local/bin/%s_kern.o", bname);
+	if (access(filename, F_OK) != -1 ) {
+		free(basec);
+		return true;
+	}
+
+	free(basec);
+	return false;
+}
+
 int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
@@ -254,7 +296,7 @@ int main(int argc, char **argv)
 	bool rm_xdp_prog = false;
 	struct passwd *pwd = NULL;
 	__u32 xdp_flags = 0;
-	char filename[256];
+	char filename[512];
 	__u32 qsize;
 	int longindex = 0;
 	uid_t owner = -1; /* -1 result in no-change of owner */
@@ -287,7 +329,12 @@ int main(int argc, char **argv)
 	 */
 	qsize = 128+64;
 
-	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
+	if (!locate_kern_object(argv[0], filename, sizeof(filename))) {
+		fprintf(stderr,
+			"ERR: cannot locate BPF _kern.o ELF file:%s errno(%d):%s\n",
+			filename, errno, strerror(errno));
+		return EXIT_FAIL;
+	}
 	prog_open_attr.file = filename;
 
 	/* Parse commands line args */
