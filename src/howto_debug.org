@@ -1,0 +1,74 @@
+# -*- fill-column: 76; -*-
+#+Title: Howto verify/debug TXQ selection via skb->queue_mapping
+
+* Background
+
+The purpose of changing =skb->queue_mapping= is to influence the selection
+of the =net_device= "txq" (struct netdev_queue), which influence selection
+of the qdisc "root_lock" (via =txq->qdisc->q.lock=) and =txq->_xmit_lock=.
+When using the =MQ= qdisc the =txq->qdisc= points to different qdisc and
+associated locks, and HARD_TX_LOCK (=txq->_xmit_lock=), for CPU scalability.
+
+* Common mistake
+
+The most common mistake is that XPS (Transmit Packet Steering) takes
+preceedence over setting =skb->queue_mapping=.  XPS is configured per DEVICE
+via =/sys/class/net/DEVICE/queues/tx-*/xps_cpus= via a CPU hex mask.  To
+disable set mask=00.
+
+See current config via command:
+#+BEGIN_SRC bash
+$ grep -H . /sys/class/net/ixgbe2/queues/tx-*/xps_cpus
+/sys/class/net/ixgbe2/queues/tx-0/xps_cpus:00
+/sys/class/net/ixgbe2/queues/tx-1/xps_cpus:00
+/sys/class/net/ixgbe2/queues/tx-2/xps_cpus:00
+/sys/class/net/ixgbe2/queues/tx-3/xps_cpus:00
+/sys/class/net/ixgbe2/queues/tx-4/xps_cpus:00
+/sys/class/net/ixgbe2/queues/tx-5/xps_cpus:00
+#+END_SRC
+
+* Debugging TXQ selection
+
+The recommended hook for changing the =skb->queue_mapping= is via TC egress
+hook on device (see kernel function =sch_handle_egress=), which happens in
+(__dev_queue_xmit) just before seleting the txq via =netdev_pick_tx=.
+
+For debugging and seeing both the =skb->queue_mapping= and the resulting txq
+index (which is usually queue_mapping - 1), we can install perf probes when
+calling =netdev_pick_tx= and observe return value from =__netdev_pick_tx=.
+
+** Capping TXQ index
+
+If setting a high =queue_mapping= for debugging purposes, notice that the
+kernel will cap the =txq= index in =skb_tx_hash()= (and in other situation
+also in =netdev_cap_txqueue()=).
+
+** Using perf probe to inspect
+
+Add two probes. First =netdev_pick_tx= to see the queue_mapping before it
+gets capped.  And second return value from =__netdev_pick_tx=, which returns
+the "txq" index capped (if not capped it should be queue_mapping - 1).
+
+#+begin_example
+perf probe --add 'netdev_pick_tx dev->name:string queue_mapping_before_cap=skb->queue_mapping dev->real_num_tx_queues dev->num_tc'
+perf probe --add '__netdev_pick_tx%return txq_queue_mapping_minus_1_after_cap=$retval'
+#+end_example
+
+Record via:
+#+begin_example
+perf record -aR \
+ -e probe:__netdev_pick_tx__return \
+ -e probe:netdev_pick_tx sleep 2
+#+end_example
+
+View result via:
+#+begin_example
+perf script
+#+end_example
+
+Delete all probes again:
+#+BEGIN_EXAMPLE
+perf probe -d '*'
+#+END_EXAMPLE
+
+trace_net_dev_queue
