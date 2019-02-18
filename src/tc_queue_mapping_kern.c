@@ -1,6 +1,14 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <linux/bpf.h>
+#include <linux/pkt_cls.h>
 #include "bpf_helpers.h"
+
+/* Manuel setup:
+
+ tc qdisc add dev ixgbe2 clsact
+ tc filter add dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
+
+*/
 
 SEC("tc_qmap2cpu")
 int  tc_cls_prog(struct __sk_buff *skb)

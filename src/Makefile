@@ -5,13 +5,15 @@ TARGET += xdp_iphash_to_cpu
 
 CMDLINE_TOOLS := xdp_iphash_to_cpu_cmdline
 
+TC_TARGETS += tc_queue_mapping
+
 LLC ?= llc
 CLANG ?= clang
 CC ?= gcc
 
 LIBBPF_DIR = ../libbpf/src/
 
-XDP_C = ${TARGET:=_kern.c}
+XDP_C = ${TARGET:=_kern.c} ${TC_TARGETS:=_kern.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 USER_C = ${TARGET:=_user.c}
 USER_OBJ = ${USER_C:.c=.o}
