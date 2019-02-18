@@ -6,9 +6,25 @@
 /* Manuel setup:
 
  tc qdisc add dev ixgbe2 clsact
- tc filter add dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
+ tc filter add     dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
+ tc filter replace dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
 
 */
+
+#define DEBUG 1
+#ifdef  DEBUG
+/* Only use this for debug output. Notice output from bpf_trace_printk()
+ * end-up in /sys/kernel/debug/tracing/trace_pipe
+ */
+#define bpf_debug(fmt, ...)                                             \
+                ({                                                      \
+                        char ____fmt[] = fmt;                           \
+                        bpf_trace_printk(____fmt, sizeof(____fmt),      \
+                                     ##__VA_ARGS__);                    \
+                })
+#else
+#define bpf_debug(fmt, ...) { } while (0)
+#endif
 
 SEC("tc_qmap2cpu")
 int  tc_cls_prog(struct __sk_buff *skb)
@@ -22,6 +38,12 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	 */
 	txq_root_handle = cpu + 1;
 	skb->queue_mapping = txq_root_handle;
+
+	/* Details: Kernel double protect against setting a too high
+	 * queue_mapping.  In skb_tx_hash() it will reduce number to be
+	 * less-than (or equal) dev->real_num_tx_queues.  And netdev_pick_tx()
+	 * cap via netdev_cap_txqueue().
+	 */
 /*
   Do simple mapping of CPU to queue_mapping.
   -----------------------------------------
@@ -46,5 +68,9 @@ int  tc_cls_prog(struct __sk_buff *skb)
   |-----+---------------+---------+-----------|
 
 */
+	bpf_debug("hello cpu:%d queue_mapping:%d \n", cpu, skb->queue_mapping);
+
 	return TC_ACT_OK;;
 }
+
+char _license[] SEC("license") = "GPL";
