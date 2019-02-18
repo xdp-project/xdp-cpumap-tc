@@ -27,6 +27,8 @@ $ grep -H . /sys/class/net/ixgbe2/queues/tx-*/xps_cpus
 /sys/class/net/ixgbe2/queues/tx-5/xps_cpus:00
 #+END_SRC
 
+A script for configuring XPS easier is provided here: [[file:../bin/xps_setup.sh]].
+
 * Debugging TXQ selection
 
 The recommended hook for changing the =skb->queue_mapping= is via TC egress
