@@ -6,6 +6,7 @@ TARGET += xdp_iphash_to_cpu
 CMDLINE_TOOLS := xdp_iphash_to_cpu_cmdline
 
 TC_TARGETS += tc_queue_mapping
+TC_TARGETS += tc_classid
 
 LLC ?= llc
 CLANG ?= clang
