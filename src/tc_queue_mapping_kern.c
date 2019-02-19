@@ -11,7 +11,7 @@
 
 */
 
-//#define DEBUG 1
+#define DEBUG 1
 #ifdef  DEBUG
 /* Only use this for debug output. Notice output from bpf_trace_printk()
  * end-up in /sys/kernel/debug/tracing/trace_pipe
@@ -68,9 +68,26 @@ int  tc_cls_prog(struct __sk_buff *skb)
   |-----+---------------+---------+-----------|
 
 */
-	bpf_debug("hello cpu:%d queue_mapping:%d \n", cpu, skb->queue_mapping);
+	//bpf_debug("hello cpu:%d queue_mapping:%d\n", cpu, skb->queue_mapping);
 
-	return TC_ACT_OK;;
+	return TC_ACT_OK;
 }
+
+#define USHRT_MAX		((__u16)(~0U))
+#define NO_QUEUE_MAPPING	USHRT_MAX
+
+#define barrier() __asm__ __volatile__("": : :"memory")
+
+SEC("tc_test_invalid_value")
+int  tc_cls_prog_test(struct __sk_buff *skb)
+{
+	/* Kernel should not allow this to take effect */
+	skb->queue_mapping = NO_QUEUE_MAPPING;
+	barrier(); /* Don't let compiler trick us */
+	bpf_debug("Tried to change queue_mapping=NO_QUEUE_MAPPING now=%d\n",
+		  skb->queue_mapping);
+	return TC_ACT_OK;
+}
+
 
 char _license[] SEC("license") = "GPL";
