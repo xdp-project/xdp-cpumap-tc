@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <linux/bpf.h>
 #include <linux/pkt_cls.h>
+#include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
 #include "bpf_helpers.h"
 
 /* Manuel setup:
@@ -26,6 +27,13 @@
 #define bpf_debug(fmt, ...) { } while (0)
 #endif
 
+/* Wrap the macros from <linux/pkt_sched.h> */
+#define TC_H_MAJOR(x) TC_H_MAJ(x)
+#define TC_H_MINOR(x) TC_H_MIN(x)
+
+/* Quick replace/reload command:
+ *  tc filter replace dev ixgbe2 egress prio 0xC000 handle 1 bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
+ */
 SEC("tc_qmap2cpu")
 int  tc_cls_prog(struct __sk_buff *skb)
 {
@@ -68,7 +76,17 @@ int  tc_cls_prog(struct __sk_buff *skb)
   |-----+---------------+---------+-----------|
 
 */
-	//bpf_debug("hello cpu:%d queue_mapping:%d\n", cpu, skb->queue_mapping);
+	/* The __u32 TC "handle" is stored in skb->priority */
+	bpf_debug("queue_mapping:%u major:%u minor:%u\n",
+		  skb->queue_mapping,
+		  TC_H_MAJOR(skb->priority) >> 16,
+		  TC_H_MINOR(skb->priority));
+	/*Changing the handle class from iptables
+	 * iptables -t mangle -A FORWARD -j CLASSIFY --set-class 0001:0004
+	 */
+
+	// Test can we write into skb->priority ?
+	// skb->priority = TC_H_MAKE(1 << 16, 42);
 
 	return TC_ACT_OK;
 }
