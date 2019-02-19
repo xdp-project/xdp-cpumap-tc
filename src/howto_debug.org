@@ -12,7 +12,7 @@ associated locks, and HARD_TX_LOCK (=txq->_xmit_lock=), for CPU scalability.
 * Common mistake
 
 The most common mistake is that XPS (Transmit Packet Steering) takes
-preceedence over setting =skb->queue_mapping=.  XPS is configured per DEVICE
+precedence over setting =skb->queue_mapping=.  XPS is configured per DEVICE
 via =/sys/class/net/DEVICE/queues/tx-*/xps_cpus= via a CPU hex mask.  To
 disable set mask=00.
 
