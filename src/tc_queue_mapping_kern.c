@@ -5,9 +5,9 @@
 
 /* Manuel setup:
 
- tc qdisc add dev ixgbe2 clsact
- tc filter add     dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
- tc filter replace dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
+ tc qdisc  add dev ixgbe2 clsact
+ tc filter add dev ixgbe2 egress bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
+ tc filter list dev ixgbe2 egress
 
 */
 
