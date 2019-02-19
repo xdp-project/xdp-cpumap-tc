@@ -94,19 +94,20 @@ struct bpf_elf_map SEC("maps") map_txq_config = {
 #define TC_H_MAJOR(x) TC_H_MAJ(x)
 #define TC_H_MINOR(x) TC_H_MIN(x)
 
-
+/* Quick manual reload command:
+ tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classid_kern.o sec tc_class
+ */
 SEC("tc_class")
 int  tc_cls_prog(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
-	__u16 txq_root_handle;
+	struct txq_config *cfg;
 
-	/* The skb->queue_mapping is 1-indexed (zero means queue_mapping not
-	 * set).  The underlying MQ leaf's are also 1-indexed, which makes it
-	 * easier to reason about.
-	 */
-	txq_root_handle = cpu + 1;
-	skb->queue_mapping = txq_root_handle;
+	cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
+        if (!cfg)
+                return TC_ACT_SHOT;
+
+	skb->queue_mapping = cfg->queue_mapping;
 
 	// TODO: Verify that the TC handle major number in
 	// skb->priority field is correct.
