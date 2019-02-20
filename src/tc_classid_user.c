@@ -26,6 +26,9 @@ static const struct option long_options[] = {
 	{"base-setup",	no_argument,		NULL, 'b' },
 	{"list",	no_argument,		NULL, 'l' },
 	{"quiet",	no_argument,		NULL, 'q' },
+	{"cpu",		required_argument,	NULL, 'c' },
+	{"queue-mapping",required_argument,	NULL, 'm' },
+	{"htb-major-hex",required_argument,	NULL, 'j' },
 	{0, 0, NULL,  0 }
 };
 
@@ -108,7 +111,8 @@ queue_mapping.
 bool base_setup(int map_fd) {
 	unsigned int possible_cpus = bpf_num_possible_cpus();
 	struct txq_config txq_cfg;
-	int cpu, err;
+	__u32 cpu;
+	int err;
 
 	for (cpu = 0; cpu < possible_cpus; cpu++) {
 		txq_cfg.queue_mapping = cpu + 1;
@@ -128,9 +132,47 @@ bool base_setup(int map_fd) {
 	return true;
 }
 
+bool single_cpu_setup(int map_fd, __s64 set_cpu, struct txq_config txq_cfg,
+		      bool set_queue_mapping, bool set_htb_major)
+{
+	__u32 cpu;
+	int err;
+
+	if (!set_queue_mapping) {
+		fprintf(stderr, "ERR: missing option --queue-mapping\n");
+		return false;
+	}
+	if (!set_htb_major) {
+		fprintf(stderr, "ERR: missing option --htb-major\n");
+		return false;
+	}
+	if (set_cpu < 0) {
+		fprintf(stderr, "ERR: missing option --cpu\n");
+		return false;
+	}
+	cpu = (__u32) set_cpu;
+
+	err = bpf_map_update_elem(map_fd, &cpu, &txq_cfg, 0);
+	if (err) {
+		fprintf(stderr,
+			"ERR: %s() updating cpu-key:%d err(%d):%s\n",
+			__func__, errno, strerror(errno));
+		return false;
+	}
+	if (verbose) {
+		printf("Set CPU=%u to use queue_mapping=%u + htb_major=0x%X:\n",
+		       cpu, txq_cfg.queue_mapping, txq_cfg.htb_major);
+		list_setup(map_fd);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int opt, longindex = 0;
+	struct txq_config txq_cfg;
+	bool set_queue_mapping = false;
+	bool set_htb_major = false;
+	__s64 set_cpu = -1;
 
 	if ((map_txq_config_fd = open_bpf_map_file(mapfile_txq_config)) < 0) {
 		fprintf(stderr,
@@ -153,6 +195,17 @@ int main(int argc, char **argv)
 			if (!list_setup(map_txq_config_fd))
 				return EXIT_FAIL_MAP;
 			break;
+		case 'c':
+			set_cpu = strtoul(optarg, NULL, 0);
+			break;
+		case 'm':
+			set_queue_mapping = true;
+			txq_cfg.queue_mapping = strtoul(optarg, NULL, 0);
+			break;
+		case 'j':
+			set_htb_major = true;
+			txq_cfg.htb_major = strtoul(optarg, NULL, 16); /* Hex */
+			break;
 		case 'h':
 		error:
 		default:
@@ -164,6 +217,11 @@ int main(int argc, char **argv)
 	if (verbose)
 		printf("%s Map name: %s\n", __doc__, mapfile_txq_config);
 
+	if (set_cpu >= 0 || set_queue_mapping || set_htb_major) {
+		if (!single_cpu_setup(map_txq_config_fd, set_cpu, txq_cfg,
+				      set_queue_mapping, set_htb_major))
+			return EXIT_FAIL_OPTION;
+	}
+
 	return EXIT_OK;
 }
-
