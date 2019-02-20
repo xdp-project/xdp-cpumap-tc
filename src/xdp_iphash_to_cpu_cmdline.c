@@ -24,6 +24,8 @@ static const char *__doc__=
 #include <bpf/libbpf.h>
 #include <bpf_util.h>
 
+#include <linux/pkt_sched.h> /* TC macros */
+
 #include "common.h"
 #include "xdp_iphash_to_cpu_common.h"
 
@@ -32,6 +34,7 @@ static const struct option long_options[] = {
         {"add",         no_argument,            NULL, 'a' },
         {"del",         no_argument,            NULL, 'x' },
         {"ip",          required_argument,      NULL, 'i' },
+        {"classid",     required_argument,      NULL, 't' },
         {"cpu",         required_argument,      NULL, 'c' },
         {"list",        no_argument,            NULL, 'l' },
         {"clear",       no_argument,            NULL, 'e' },
@@ -134,6 +137,45 @@ int open_bpf_map(const char *file)
 	}
 	return fd;
 }
+
+/* Handle classid parsing based on iproute source */
+int get_tc_classid(__u32 *h, const char *str)
+{
+	__u32 major, minor;
+	char *p;
+
+//	major = TC_H_ROOT;
+//	if (strcmp(str, "root") == 0)
+//		goto ok;
+//	major = TC_H_UNSPEC;
+//	if (strcmp(str, "none") == 0)
+//		goto ok;
+	major = strtoul(str, &p, 16);
+	if (p == str) {
+		major = 0;
+		if (*p != ':')
+			return -1;
+	}
+	if (*p == ':') {
+		if (major >= (1<<16))
+			return -1;
+		major <<= 16;
+		str = p+1;
+		minor = strtoul(str, &p, 16);
+		if (*p != 0)
+			return -1;
+		if (minor >= (1<<16))
+			return -1;
+		major |= minor;
+	} else if (*p != 0)
+		return -1;
+
+ok:
+	*h = major;
+	return 0;
+}
+
+
 int main(int argc, char **argv) {
 	#	define STR_MAX 42 /* For trivial input validation */
 	char _ip_string_buf[STR_MAX] = {};
@@ -145,6 +187,8 @@ int main(int argc, char **argv) {
 	int opt;
 	int fd;
 	__u32 cpu = -1;
+	__u32 tc_handle = 0;
+
 	while ((opt = getopt_long(argc, argv, "haxil:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
@@ -164,6 +208,13 @@ int main(int argc, char **argv) {
 			}
 			ip_string = (char *)&_ip_string_buf;
 			strncpy(ip_string, optarg, STR_MAX);
+			break;
+		case 't': /* classid parse like iproute2 into __u32 tc_handle */
+			if ( get_tc_classid(&tc_handle, optarg) < 0) {
+				printf("ERR: classid tc syntax (HEX) major:minor\n");
+				goto fail_opt;
+			}
+			// printf("Got --classid=%s handle:0x%X\n", optarg, tc_handle);
 			break;
 		case 'l':
 			do_list = true;
