@@ -23,6 +23,8 @@ static const char *__doc__=
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <bpf_util.h>
+
+#include "common.h"
 #include "xdp_iphash_to_cpu_common.h"
 
 static const struct option long_options[] = {
