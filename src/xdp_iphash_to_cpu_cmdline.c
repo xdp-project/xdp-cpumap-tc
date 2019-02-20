@@ -93,15 +93,15 @@ static void iphash_print_ipv4(__u32 ip, __u32 cpu)
 }
 static void iphash_list_all_ipv4(int fd)
 {
-	__u32 key = 0, next_key;
+	__u32 key, *prev_key = NULL;
 	__u32 value;
 	int err;
 
 	printf("{\n");
-	while ((err = bpf_map_get_next_key(fd, &key, &next_key)) == 0) {
-		key = next_key;
+	while ((err = bpf_map_get_next_key(fd, prev_key, &key)) == 0) {
 		value = get_key32_value32(fd, key);
 		iphash_print_ipv4(key, value);
+		prev_key = &key;
 	}
 	printf("}\n");
 	/* Make sure err was result of last key reached */
@@ -112,14 +112,14 @@ static void iphash_list_all_ipv4(int fd)
 }
 static void iphash_clear_all_ipv4(int fd)
 {
-	__u32 key = 0, next_key;
+	__u32 key, *prev_key = NULL;
 	__u32 value;
         int res;
 	char ip_txt[INET_ADDRSTRLEN] = {0};
-	while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
-		key = next_key;
+	while (bpf_map_get_next_key(fd, prev_key, &key) == 0) {
                 inet_ntop(AF_INET, &key, ip_txt, sizeof(ip_txt));
 		res = iphash_modify(fd, ip_txt, ACTION_DEL,0);
+		prev_key = &key;
 	}
 }
 int open_bpf_map(const char *file)
