@@ -67,13 +67,13 @@ xdp_iphash_to_cpu_kern.o:  xdp_iphash_to_cpu_common.h
 xdp_iphash_to_cpu_cmdline: xdp_iphash_to_cpu_common.h
 xdp_iphash_to_cpu:         xdp_iphash_to_cpu_common.h
 
-$(TARGET): %: %_user.c $(OBJECT_LIBBPF) Makefile
+$(TARGET): %: %_user.c $(OBJECT_LIBBPF) Makefile common.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
 
-$(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile
+$(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile common.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
 
-$(XDP_OBJ): %.o: %.c
+$(XDP_OBJ): %.o: %.c  common.h
 	$(CLANG) -S \
 	    -D __BPF_TRACING__ \
 	    $(CFLAGS) \

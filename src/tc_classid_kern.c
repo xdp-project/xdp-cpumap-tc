@@ -2,6 +2,7 @@
 #include <linux/bpf.h>
 #include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
+#include "common.h"
 
 #include "bpf_helpers.h"
 
@@ -30,16 +31,8 @@ struct bpf_elf_map {
 };
 
 /* More dynamic: let create a map that contains the mapping table, to
- * allow more dynamic configuration.
- *
- * Lookup key: __u32 cpu;
+ * allow more dynamic configuration. (See common.h for struct txq_config)
  */
-struct txq_config {
-	/* lookup key: __u32 cpu; */
-	__u16 queue_mapping;
-	__u16 htb_major;
-};
-
 struct bpf_elf_map SEC("maps") map_txq_config = {
         .type	    = BPF_MAP_TYPE_ARRAY,
         .size_key   = sizeof(__u32),
