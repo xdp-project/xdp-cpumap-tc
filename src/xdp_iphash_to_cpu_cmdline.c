@@ -82,9 +82,25 @@ static __u32 get_key32_value32(int fd, __u32 key)
 	//return sum;
 }
 
-static void iphash_print_ipv4(__u32 ip, __u32 cpu)
+static bool get_key32_value_ip_info(int fd, __u32 key, struct ip_hash_info *ip_info)
+{
+	if ((bpf_map_lookup_elem(fd, &key, ip_info)) != 0) {
+		fprintf(stderr,
+			"ERR: bpf_map_lookup_elem failed key:%u errno(%d):%s\n",
+			key, errno, strerror(errno));
+		return false;
+	}
+	return true;
+}
+
+static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info)
 {
 	char ip_txt[INET_ADDRSTRLEN] = {0};
+
+	if (!ip_info) {
+		fprintf(stderr,	"ERR: %s() NULL pointer\n", __func__);
+		exit(EXIT_FAIL);
+	}
 
 	/* Convert IPv4 addresses from binary to text form */
 	if (!inet_ntop(AF_INET, &ip, ip_txt, sizeof(ip_txt))) {
@@ -92,18 +108,22 @@ static void iphash_print_ipv4(__u32 ip, __u32 cpu)
 			"ERR: Cannot convert u32 IP:0x%X to IP-txt\n", ip);
 		exit(EXIT_FAIL_IP);
 	}
-	printf("\"%s\" : %i\n", ip_txt, cpu);
+	printf("\"%s\" : %u, tc_handle : 0x%X\n",
+	       ip_txt, ip_info->cpu, ip_info->tc_handle);
 }
 static void iphash_list_all_ipv4(int fd)
 {
 	__u32 key, *prev_key = NULL;
-	__u32 value;
+	struct ip_hash_info ip_info;
 	int err;
 
 	printf("{\n");
 	while ((err = bpf_map_get_next_key(fd, prev_key, &key)) == 0) {
-		value = get_key32_value32(fd, key);
-		iphash_print_ipv4(key, value);
+		if (!get_key32_value_ip_info(fd, key, &ip_info)) {
+			err = -1;
+			break;
+		}
+		iphash_print_ipv4(key, &ip_info);
 		prev_key = &key;
 	}
 	printf("}\n");
@@ -121,7 +141,7 @@ static void iphash_clear_all_ipv4(int fd)
 	char ip_txt[INET_ADDRSTRLEN] = {0};
 	while (bpf_map_get_next_key(fd, prev_key, &key) == 0) {
                 inet_ntop(AF_INET, &key, ip_txt, sizeof(ip_txt));
-		res = iphash_modify(fd, ip_txt, ACTION_DEL,0);
+		res = iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0);
 		prev_key = &key;
 	}
 }
@@ -188,6 +208,7 @@ int main(int argc, char **argv) {
 	int fd;
 	__u32 cpu = -1;
 	__u32 tc_handle = 0;
+	bool provided_classid = false;
 
 	while ((opt = getopt_long(argc, argv, "haxil:",
 				  long_options, &longindex)) != -1) {
@@ -215,6 +236,7 @@ int main(int argc, char **argv) {
 				goto fail_opt;
 			}
 			// printf("Got --classid=%s handle:0x%X\n", optarg, tc_handle);
+			provided_classid = true;
 			break;
 		case 'l':
 			do_list = true;
@@ -230,7 +252,6 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (do_list) {
-		int fd_iphash_count_array[IP_HASH_MAX];
 		int i;
 
 		fd = open_bpf_map(mapfile_ip_hash);
@@ -239,7 +260,6 @@ int main(int argc, char **argv) {
 		return EXIT_OK;
 	}
 	if (do_clear) {
-		int fd_iphash_count_array[IP_HASH_MAX];
 		int i;
 
 		fd = open_bpf_map(mapfile_ip_hash);
@@ -259,6 +279,10 @@ int main(int argc, char **argv) {
                 printf("ERR: required option --cpu missing when using --add");
 		goto fail_opt;
         }
+	if (action == ACTION_ADD && !provided_classid) {
+                printf("ERR: required option --classid missing when using --add");
+		goto fail_opt;
+        }
 	if (action) {
 		int res = 0;
 
@@ -270,7 +294,7 @@ int main(int argc, char **argv) {
 
 		if (ip_string) {
 			fd = open_bpf_map(mapfile_ip_hash);
-			res = iphash_modify(fd, ip_string, action,cpu);
+			res = iphash_modify(fd, ip_string, action, cpu, tc_handle);
 			close(fd);
 		}
 		return res;
