@@ -13,6 +13,8 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
+#include "common.h"
+
 #define u16 __u16
 #define u32 __u32
 #define u64 __u64
@@ -36,11 +38,11 @@ struct bpf_map_def SEC("maps") cpu_map = {
 	.value_size	= sizeof(u32),
 	.max_entries	= MAX_CPUS,
 };
-struct bpf_map_def SEC("maps") ip_hash = {
+struct bpf_map_def SEC("maps") map_ip_hash = {
 	.type        = BPF_MAP_TYPE_HASH,
 	.key_size    = sizeof(u32),
-	.value_size  = sizeof(u32),
-	.max_entries = 50000,
+	.value_size  = sizeof(struct ip_hash_info),
+	.max_entries = IP_HASH_ENTRIES_MAX,
 };
 struct bpf_map_def SEC("maps") cpus_available = {
         .type           = BPF_MAP_TYPE_ARRAY,
@@ -159,12 +161,12 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	 * another map that says if a CPU is avail for redirect.
 	 */
 
-	cpu_id_lookup = bpf_map_lookup_elem(&ip_hash, &ip);
+	cpu_id_lookup = bpf_map_lookup_elem(&map_ip_hash, &ip);
 	if (!cpu_id_lookup) {
 		bpf_debug("cant find cpu_id_lookup\n");
 		// 255.255.255.255 is for default traffic
 		ip = bpf_ntohl(0xFFFFFFFF);
-		cpu_id_lookup = bpf_map_lookup_elem(&ip_hash, &ip);
+		cpu_id_lookup = bpf_map_lookup_elem(&map_ip_hash, &ip);
 		if (!cpu_id_lookup) {
 			bpf_debug("cant find default cpu_idx_lookup\n");
 			return XDP_PASS;

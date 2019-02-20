@@ -30,6 +30,15 @@ struct bpf_elf_map {
         __u32 pinning;
 };
 
+/* Map shared with XDP programs */
+struct bpf_elf_map SEC("maps") map_ip_hash = {
+	.type       = BPF_MAP_TYPE_HASH,
+	.size_key   = sizeof(__u32),
+	.size_value = sizeof(struct ip_hash_info),
+	.max_elem   = IP_HASH_ENTRIES_MAX,
+        .pinning    = PIN_GLOBAL_NS, /* /sys/fs/bpf/tc/globals/map_ip_hash */
+};
+
 /* More dynamic: let create a map that contains the mapping table, to
  * allow more dynamic configuration. (See common.h for struct txq_config)
  */
@@ -95,6 +104,8 @@ int  tc_cls_prog(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
 	struct txq_config *cfg;
+	struct ip_hash_info *ip_info;
+	__u32 ip = 0;
 
 	cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
         if (!cfg)
@@ -105,8 +116,15 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	// TODO: Verify that the TC handle major number in
 	// skb->priority field is correct.
 
+	// Just use map_ip_hash for something
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
+	if (!ip_info)
+		return TC_ACT_OK;
+	if (ip_info->cpu != cpu)
+		bpf_debug("Mismatch: Curr-CPU:%u but IP:%u wants CPU:%u",
+			  cpu, ip, ip_info->cpu);
+
 	return TC_ACT_OK;
 }
-
 
 char _license[] SEC("license") = "GPL";
