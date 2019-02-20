@@ -95,14 +95,20 @@ static void iphash_list_all_ipv4(int fd)
 {
 	__u32 key = 0, next_key;
 	__u32 value;
+	int err;
 
 	printf("{\n");
-	while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
+	while ((err = bpf_map_get_next_key(fd, &key, &next_key)) == 0) {
 		key = next_key;
 		value = get_key32_value32(fd, key);
 		iphash_print_ipv4(key, value);
 	}
 	printf("}\n");
+	/* Make sure err was result of last key reached */
+	if (err < 0 && errno != ENOENT)
+		fprintf(stderr,
+			"WARN: %s() didn't list all entries: err(%d/%d):%s\n",
+			__func__, err, errno, strerror(errno));
 }
 static void iphash_clear_all_ipv4(int fd)
 {
