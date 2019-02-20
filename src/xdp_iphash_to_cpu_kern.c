@@ -130,7 +130,8 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	u32 *direction_lookup;
 	u32 direction;
 	u32 ip; /* type need to match map */
-	u32 *cpu_id_lookup;
+	struct ip_hash_info *ip_info;
+	//u32 *cpu_id_lookup;
 	u32 cpu_id;
 	u32 *cpu_lookup;
 	u32 cpu_dest;
@@ -161,19 +162,20 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	 * another map that says if a CPU is avail for redirect.
 	 */
 
-	cpu_id_lookup = bpf_map_lookup_elem(&map_ip_hash, &ip);
-	if (!cpu_id_lookup) {
-		bpf_debug("cant find cpu_id_lookup\n");
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
+	if (!ip_info) {
+		bpf_debug("cant find ip_info->cpu id for ip:%u\n", ip);
 		// 255.255.255.255 is for default traffic
 		ip = bpf_ntohl(0xFFFFFFFF);
-		cpu_id_lookup = bpf_map_lookup_elem(&map_ip_hash, &ip);
-		if (!cpu_id_lookup) {
+		ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
+		if (!ip_info) {
 			bpf_debug("cant find default cpu_idx_lookup\n");
 			return XDP_PASS;
 		}
 	}
-	cpu_id = *cpu_id_lookup;
-	bpf_debug("cpu_id %i\n", cpu_id);
+	cpu_id = ip_info->cpu;
+	bpf_debug("cpu_id %d ip:%u tc_handle:%u\n",
+		  cpu_id, ip, ip_info->tc_handle);
 	cpu_lookup = bpf_map_lookup_elem(&cpus_available, &cpu_id);
 	if (!cpu_lookup) {
 		bpf_debug("cant find cpu_lookup\n");
@@ -182,7 +184,7 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	cpu_dest = *cpu_lookup;
 	if (cpu_dest >= MAX_CPUS) {
 		/* _user side set/marked non-configured CPUs with MAX_CPUS */
-		bpf_debug("cpu_dest to high %i\n",cpu_dest);
+		bpf_debug("cpu_dest too high %i\n",cpu_dest);
 		return XDP_PASS;
 	}
 

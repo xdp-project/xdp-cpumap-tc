@@ -43,7 +43,7 @@ struct txq_config {
 struct ip_hash_info {
 	/* lookup key: __u32 IPv4-address */
 	__u32 cpu;
-	// TODO: __u32 tc_handle; // MAJOR:MINOR combined in __u32
+	__u32 tc_handle; /* TC handle MAJOR:MINOR combined in __u32 */
 };
 
 #endif /* __PROJ_COMMON_H */
