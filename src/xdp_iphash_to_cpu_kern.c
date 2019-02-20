@@ -162,8 +162,8 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 	cpu_id_lookup = bpf_map_lookup_elem(&ip_hash, &ip);
 	if (!cpu_id_lookup) {
 		bpf_debug("cant find cpu_id_lookup\n");
-		// 0.0.0.0 is for default traffic
-		ip = bpf_ntohl(0);
+		// 255.255.255.255 is for default traffic
+		ip = bpf_ntohl(0xFFFFFFFF);
 		cpu_id_lookup = bpf_map_lookup_elem(&ip_hash, &ip);
 		if (!cpu_id_lookup) {
 			bpf_debug("cant find default cpu_idx_lookup\n");
