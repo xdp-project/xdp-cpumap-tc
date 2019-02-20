@@ -2,6 +2,10 @@
 #include <linux/bpf.h>
 #include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
+
+#include <linux/if_ether.h>
+
+#include "bpf_endian.h"
 #include "common.h"
 
 #include "bpf_helpers.h"
@@ -96,6 +100,18 @@ struct bpf_elf_map SEC("maps") map_txq_config = {
 #define TC_H_MAJOR(x) TC_H_MAJ(x)
 #define TC_H_MINOR(x) TC_H_MIN(x)
 
+/*
+static inline
+struct ip_hdr *get_ipv4_hdr(struct __sk_buff *skb)
+{
+	void *data     = (void *) (long) skb->data;
+        void *data_end = (void *) (long) skb->data_end;
+
+	
+}
+*/
+
+
 /* Quick manual reload command:
  tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classid_kern.o sec tc_class
  */
@@ -112,16 +128,36 @@ int  tc_cls_prog(struct __sk_buff *skb)
                 return TC_ACT_SHOT;
 
 	skb->queue_mapping = cfg->queue_mapping;
+	if (cfg->queue_mapping == 0) {
+		bpf_debug("Misconfig: CPU:%u is not conf in map_txq_config?\n", cpu);
+	}
 
 	// TODO: Verify that the TC handle major number in
 	// skb->priority field is correct.
+
+	// TODO lookup IPv4-addr
+
+	/* The protocol is already known via SKB info, (but how to
+	 * handle if there are VLANs?)
+	 */
+	switch (skb->protocol) {
+	case bpf_htons(ETH_P_IPV6):
+		/* Not implemented */
+		break;
+	case bpf_htons(ETH_P_IP):
+		bpf_debug("Seeing ETH_P_IP\n");
+		// ret = handle_ipv4(skb);
+		break;
+	default:
+		bpf_debug("Not handling proto:0x%x\n", skb->protocol);
+	}
 
 	// Just use map_ip_hash for something
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
 	if (!ip_info)
 		return TC_ACT_OK;
 	if (ip_info->cpu != cpu)
-		bpf_debug("Mismatch: Curr-CPU:%u but IP:%u wants CPU:%u",
+		bpf_debug("Mismatch: Curr-CPU:%u but IP:%u wants CPU:%u\n",
 			  cpu, ip, ip_info->cpu);
 
 	return TC_ACT_OK;
