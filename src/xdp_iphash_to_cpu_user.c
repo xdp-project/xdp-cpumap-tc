@@ -88,12 +88,18 @@ static int ip_hash_map_fd = -1;
 static int cpus_available_map_fd  = -1;
 static int cpu_direction_map_fd  = -1;
 
-static int init_map_fds(struct bpf_object *obj)
+static int init_map_fds(struct bpf_object *obj, int pinned_file_fd)
 {
 	cpu_map_fd            = bpf_object__find_map_fd_by_name(obj, "cpu_map");
-	ip_hash_map_fd        = bpf_object__find_map_fd_by_name(obj, "map_ip_hash");
 	cpus_available_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_available");
 	cpu_direction_map_fd  = bpf_object__find_map_fd_by_name(obj, "cpu_direction");
+
+	/* If an old TC tool created and pinned map then it have no "name".
+	 * In that case use the FD from opening the pinned file.
+	 */
+	ip_hash_map_fd = bpf_object__find_map_fd_by_name(obj, "map_ip_hash");
+	if (ip_hash_map_fd < 0 && pinned_file_fd > 0)
+		ip_hash_map_fd = pinned_file_fd;
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
 	    cpus_available_map_fd < 0 || cpu_direction_map_fd < 0)
@@ -495,7 +501,7 @@ int main(int argc, char **argv)
 	if (owner >= 0)
 		chown_maps(owner, group, mapfile_ip_hash);
 
-	if (init_map_fds(obj) < 0) {
+	if (init_map_fds(obj, pinned_file_fd) < 0) {
 		fprintf(stderr, "bpf_object__find_map_fd_by_name failed\n");
 		return EXIT_FAIL;
 	}
