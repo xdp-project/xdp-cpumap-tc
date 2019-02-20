@@ -178,11 +178,11 @@ static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 	if (ifindex > -1)
 		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
 
-	/* Remove exported map files */
-	if (unlink(file) < 0) {
-		fprintf(stderr, "WARN: cannot rm map file:%s err(%d):%s\n",
-		       file, errno, strerror(errno));
-	}
+	/* map file is possibly share, cannot remove it here */
+	if (verbose)
+		fprintf(stderr,
+			"INFO: not cleanup pinned map file:%s (use 'rm')\n",
+			file);
 }
 
 #ifndef BPF_FS_MAGIC
