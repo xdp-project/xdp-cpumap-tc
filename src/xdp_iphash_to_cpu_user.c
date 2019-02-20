@@ -447,7 +447,7 @@ int main(int argc, char **argv)
 		return EXIT_FAIL_MAP_FILE;
 	}
 
-	map = bpf_object__find_map_by_name(obj, "ip_hash");
+	map = bpf_object__find_map_by_name(obj, "map_ip_hash");
 	if (!map) {
 		fprintf(stderr, "ERR: cannot find map\n");
 		return EXIT_FAIL;
