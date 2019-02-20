@@ -32,9 +32,9 @@ int open_bpf_map_file(const char *file)
 
 int main(int argc, char **argv)
 {
-	printf("Hello World, map name: %s\n", file_txq_config);
+	printf("Hello World, map name: %s\n", mapfile_txq_config);
 
-	if ((map_txq_config_fd = open_bpf_map_file(file_txq_config)) < 0) {
+	if ((map_txq_config_fd = open_bpf_map_file(mapfile_txq_config)) < 0) {
 		fprintf(stderr,
 			"ERR: cannot proceed without access to config map\n");
 		return EXIT_FAIL;

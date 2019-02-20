@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
 		int fd_iphash_count_array[IP_HASH_MAX];
 		int i;
 
-		fd = open_bpf_map(file_ip_hash);
+		fd = open_bpf_map(mapfile_ip_hash);
 		iphash_list_all_ipv4(fd);
 		close(fd);
 		return EXIT_OK;
@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
 		int fd_iphash_count_array[IP_HASH_MAX];
 		int i;
 
-		fd = open_bpf_map(file_ip_hash);
+		fd = open_bpf_map(mapfile_ip_hash);
 		iphash_clear_all_ipv4(fd);
 		close(fd);
 		return EXIT_OK;
@@ -212,7 +212,7 @@ int main(int argc, char **argv) {
 		}
 
 		if (ip_string) {
-			fd = open_bpf_map(file_ip_hash);
+			fd = open_bpf_map(mapfile_ip_hash);
 			res = iphash_modify(fd, ip_string, action,cpu);
 			close(fd);
 		}

@@ -23,7 +23,9 @@
  */
 #define BASEDIR_MAPS "/sys/fs/bpf/tc/globals"
 
-static const char *file_txq_config = BASEDIR_MAPS "/map_txq_config";
+static const char *mapfile_txq_config = BASEDIR_MAPS "/map_txq_config";
+static const char *mapfile_ip_hash    = BASEDIR_MAPS "/map_ip_hash";
+
 /*
  * Gotcha need to mount:
  *   mount -t bpf bpf /sys/fs/bpf/

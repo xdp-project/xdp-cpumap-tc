@@ -5,12 +5,6 @@
 
 static int verbose = 1;
 
-/* Export eBPF maps for IPv4 iphash as a files
- * Gotcha need to mount:
- *   mount -t bpf bpf /sys/fs/bpf/
- */
-static const char *file_ip_hash = "/sys/fs/bpf/file_ip_hash";
-
 /* Iphash operations */
 #define ACTION_ADD	(1 << 0)
 #define ACTION_DEL	(1 << 1)

@@ -168,7 +168,7 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_
 
 static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 {
-	const char *file = file_ip_hash;
+	const char *file = mapfile_ip_hash;
 	int i;
 
 	if (verbose) {
@@ -454,11 +454,12 @@ int main(int argc, char **argv)
 	}
 
 	/* Reuse pinned map file, if available, else create pinned file */
-	pinned_file_fd = open_bpf_map(file_ip_hash);
+	pinned_file_fd = open_bpf_map(mapfile_ip_hash);
 	if (pinned_file_fd > 0) {
 		/* Use pinned_file_fd instead */
 		err = bpf_map__reuse_fd(map, pinned_file_fd);
-		fprintf(stderr, "INFO: using pinned ip_hash map: %s\n", file_ip_hash);
+		fprintf(stderr, "INFO: using pinned ip_hash map: %s\n",
+			mapfile_ip_hash);
 	}
 
 	bpf_prog = bpf_program__next(NULL, obj);
@@ -483,8 +484,8 @@ int main(int argc, char **argv)
 
 	if (pinned_file_fd < 0) {
 		/* No pinned file, lets pin the file */
-		fprintf(stderr, "INFO: pin ip_hash map: %s\n", file_ip_hash);
-		err = bpf_map__pin(map, file_ip_hash);
+		fprintf(stderr, "INFO: pin ip_hash map: %s\n", mapfile_ip_hash);
+		err = bpf_map__pin(map, mapfile_ip_hash);
 		if (err) {
 			fprintf(stderr, "ERR: cannot pin: %s\n", strerror(errno));
 			return EXIT_FAIL;
@@ -492,7 +493,7 @@ int main(int argc, char **argv)
 	}
 
 	if (owner >= 0)
-		chown_maps(owner, group, file_ip_hash);
+		chown_maps(owner, group, mapfile_ip_hash);
 
 	if (init_map_fds(obj) < 0) {
 		fprintf(stderr, "bpf_object__find_map_fd_by_name failed\n");
