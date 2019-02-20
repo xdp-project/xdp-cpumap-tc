@@ -3,8 +3,8 @@
 #define __PROJ_COMMON_H
 
 /* Exit return codes */
-#define	EXIT_OK			0
-#define EXIT_FAIL		1
+#define	EXIT_OK			0 /* == EXIT_SUCCESS */
+#define EXIT_FAIL		1 /* == EXIT_FAILURE */
 #define EXIT_FAIL_OPTION	2
 #define EXIT_FAIL_XDP		3
 #define EXIT_FAIL_MAP		20

@@ -37,9 +37,9 @@ int main(int argc, char **argv)
 	if ((map_txq_config_fd = open_bpf_map_file(file_txq_config)) < 0) {
 		fprintf(stderr,
 			"ERR: cannot proceed without access to config map\n");
-		return EXIT_FAILURE;
+		return EXIT_FAIL;
 	}
 
-	return EXIT_SUCCESS;
+	return EXIT_OK;
 }
 
