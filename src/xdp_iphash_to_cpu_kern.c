@@ -15,10 +15,6 @@
 
 #include "common_kern_user.h"
 
-#define u16 __u16
-#define u32 __u32
-#define u64 __u64
-
 #define DEBUG
 
 struct vlan_hdr {
@@ -29,7 +25,7 @@ struct vlan_hdr {
 /* Pinned shared map: see  mapfile_ip_hash */
 struct bpf_map_def SEC("maps") map_ip_hash = {
 	.type        = BPF_MAP_TYPE_HASH,
-	.key_size    = sizeof(u32),
+	.key_size    = sizeof(__u32),
 	.value_size  = sizeof(struct ip_hash_info),
 	.max_entries = IP_HASH_ENTRIES_MAX,
 };
@@ -37,23 +33,23 @@ struct bpf_map_def SEC("maps") map_ip_hash = {
 /* Pinned shared map: see  mapfile_ifindex_type */
 struct bpf_map_def SEC("maps") map_ifindex_type = {
 	.type        = BPF_MAP_TYPE_ARRAY,
-	.key_size    = sizeof(u32),
-	.value_size  = sizeof(u32),
+	.key_size    = sizeof(__u32),
+	.value_size  = sizeof(__u32),
 	.max_entries = MAX_IFINDEX,
 };
 
 /* Special map type that can XDP_REDIRECT frames to another CPU */
 struct bpf_map_def SEC("maps") cpu_map = {
 	.type		= BPF_MAP_TYPE_CPUMAP,
-	.key_size	= sizeof(u32),
-	.value_size	= sizeof(u32),
+	.key_size	= sizeof(__u32),
+	.value_size	= sizeof(__u32),
 	.max_entries	= MAX_CPUS,
 };
 
 struct bpf_map_def SEC("maps") cpus_available = {
         .type           = BPF_MAP_TYPE_ARRAY,
-        .key_size       = sizeof(u32),
-        .value_size     = sizeof(u32),
+        .key_size       = sizeof(__u32),
+        .value_size     = sizeof(__u32),
         .max_entries    = MAX_CPUS,
 };
 
@@ -77,10 +73,10 @@ struct bpf_map_def SEC("maps") cpus_available = {
  */
 static __always_inline
 bool parse_eth(struct ethhdr *eth, void *data_end,
-	       u16 *eth_proto, u64 *l3_offset)
+	       __u16 *eth_proto, __u64 *l3_offset)
 {
-	u16 eth_type;
-	u64 offset;
+	__u16 eth_type;
+	__u64 offset;
 
 	offset = sizeof(*eth);
 	if ((void *)eth + offset > data_end)
@@ -122,19 +118,19 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 }
 
 static __always_inline
-u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
+__u32 parse_ipv4(struct xdp_md *ctx, __u64 l3_offset, __u32 ifindex)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
 	struct iphdr *iph = data + l3_offset;
-	u32 *direction_lookup;
-	u32 direction;
-	u32 ip; /* type need to match map */
+	__u32 *direction_lookup;
+	__u32 direction;
+	__u32 ip; /* type need to match map */
 	struct ip_hash_info *ip_info;
 	//u32 *cpu_id_lookup;
-	u32 cpu_id;
-	u32 *cpu_lookup;
-	u32 cpu_dest;
+	__u32 cpu_id;
+	__u32 *cpu_lookup;
+	__u32 cpu_dest;
 
 	/* Hint: +1 is sizeof(struct iphdr) */
 	if (iph + 1 > data_end) {
@@ -195,7 +191,8 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 }
 
 static __always_inline
-u32 handle_eth_protocol(struct xdp_md *ctx, u16 eth_proto, u64 l3_offset, u32 ifindex)
+__u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u64 l3_offset,
+			  __u32 ifindex)
 {
 	int test;
 	switch (eth_proto) {
@@ -222,9 +219,9 @@ int  xdp_program(struct xdp_md *ctx)
 	void *data     = (void *)(long)ctx->data;
 	__u32 ifindex  = ctx->ingress_ifindex;
 	struct ethhdr *eth = data;
-	u16 eth_proto = 0;
-	u64 l3_offset = 0;
-	u32 action;
+	__u16 eth_proto = 0;
+	__u64 l3_offset = 0;
+	__u32 action;
 
 	if (!(parse_eth(eth, data_end, &eth_proto, &l3_offset))) {
 		bpf_debug("Cannot parse L2: L3off:%llu proto:0x%x\n",
