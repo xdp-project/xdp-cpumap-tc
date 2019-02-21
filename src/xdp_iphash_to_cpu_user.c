@@ -77,23 +77,59 @@ static void usage(char *argv[])
 	printf("\n");
 }
 
+/* TODO move to libbpf */
+struct bpf_pinned_map {
+	const char *name;
+	const char *filename;
+	int map_fd;
+};
+
+/*     bpf_prog_load_attr extended */
+struct bpf_prog_load_attr_maps {
+	const char *file;
+	enum bpf_prog_type prog_type;
+	enum bpf_attach_type expected_attach_type;
+	int ifindex;
+	int nr_pinned_maps;
+	struct bpf_pinned_map *pinned_maps;
+};
+
 static int cpu_map_fd = -1;
 static int ip_hash_map_fd = -1;
 static int cpus_available_map_fd  = -1;
 static int ifindex_type_map_fd  = -1;
 
-static int init_map_fds(struct bpf_object *obj, int pinned_file_fd)
+static int find_map_fd_by_name(struct bpf_object *obj,
+			       const char *mapname,
+			       struct bpf_prog_load_attr_maps *attr)
 {
-	cpu_map_fd            = bpf_object__find_map_fd_by_name(obj, "cpu_map");
-	cpus_available_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_available");
-	ifindex_type_map_fd   = bpf_object__find_map_fd_by_name(obj, "ifindex_type");
+	int map_fd, i;
+
+	/* Prefer using libbpf function to find_fd_by_name */
+	map_fd = bpf_object__find_map_fd_by_name(obj, mapname);
 
 	/* If an old TC tool created and pinned map then it have no "name".
-	 * In that case use the FD from opening the pinned file.
+	 * In that case use the FD that was returned when opening pinned file.
 	 */
-	ip_hash_map_fd = bpf_object__find_map_fd_by_name(obj, "map_ip_hash");
-	if (ip_hash_map_fd < 0 && pinned_file_fd > 0)
-		ip_hash_map_fd = pinned_file_fd;
+	for (i = 0; i < attr->nr_pinned_maps; i++) {
+		struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
+
+		if (strcmp(mapname, pin_map->name) != 0)
+				continue;
+
+		/* Matched, use FD stored in bpf_pinned_map */
+		map_fd = pin_map->map_fd;
+	}
+	return map_fd;
+}
+
+static int init_map_fds(struct bpf_object *obj,
+			struct bpf_prog_load_attr_maps *attr)
+{
+	cpu_map_fd            = find_map_fd_by_name(obj, "cpu_map", attr);
+	cpus_available_map_fd = find_map_fd_by_name(obj, "cpus_available",attr);
+	ifindex_type_map_fd   = find_map_fd_by_name(obj, "ifindex_type", attr);
+	ip_hash_map_fd        = find_map_fd_by_name(obj, "map_ip_hash", attr);
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
 	    cpus_available_map_fd < 0 || ifindex_type_map_fd < 0)
@@ -252,6 +288,151 @@ bool locate_kern_object(char *execname, char *filename, size_t size)
 	return false;
 }
 
+/* From: include/linux/err.h */
+#define MAX_ERRNO       4095
+#define IS_ERR_VALUE(x) ((x) >= (unsigned long)-MAX_ERRNO)
+static inline bool IS_ERR_OR_NULL(const void *ptr)
+{
+        return (!ptr) || IS_ERR_VALUE((unsigned long)ptr);
+}
+
+#define pr_warning printf
+
+/* As close as possible to libbpf bpf_prog_load_xattr(), with the
+ * difference of handling pinned maps.
+ */
+int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
+			     struct bpf_object **pobj, int *prog_fd)
+{
+	struct bpf_object_open_attr open_attr = {
+		.file		= attr->file,
+		.prog_type	= attr->prog_type,
+	};
+	struct bpf_program *prog, *first_prog = NULL;
+	enum bpf_attach_type expected_attach_type;
+	enum bpf_prog_type prog_type;
+	struct bpf_object *obj;
+	struct bpf_map *map;
+	int err;
+	int i;
+
+	if (!attr)
+		return -EINVAL;
+	if (!attr->file)
+		return -EINVAL;
+
+
+	obj = bpf_object__open_xattr(&open_attr);
+	if (IS_ERR_OR_NULL(obj))
+		return -ENOENT;
+
+	bpf_object__for_each_program(prog, obj) {
+		/*
+		 * If type is not specified, try to guess it based on
+		 * section name.
+		 */
+		prog_type = attr->prog_type;
+#if 0 /* Use internal libbpf variables */
+		prog->prog_ifindex = attr->ifindex;
+#endif
+		expected_attach_type = attr->expected_attach_type;
+#if 0 /* Use internal libbpf variables */
+		if (prog_type == BPF_PROG_TYPE_UNSPEC) {
+			err = bpf_program__identify_section(prog, &prog_type,
+							    &expected_attach_type);
+			if (err < 0) {
+				bpf_object__close(obj);
+				return -EINVAL;
+			}
+		}
+#endif
+
+		bpf_program__set_type(prog, prog_type);
+		bpf_program__set_expected_attach_type(prog,
+						      expected_attach_type);
+
+		if (!first_prog)
+			first_prog = prog;
+	}
+
+	/* Reset attr->pinned_maps.map_fd to identify successful file load */
+	for (i = 0; i < attr->nr_pinned_maps; i++)
+		attr->pinned_maps[i].map_fd = -1;
+
+	bpf_map__for_each(map, obj) {
+#if 0 /* Use internal libbpf variables */
+		if (!bpf_map__is_offload_neutral(map))
+			map->map_ifindex = attr->ifindex;
+#endif
+		const char* mapname = bpf_map__name(map);
+
+		for (i = 0; i < attr->nr_pinned_maps; i++) {
+			struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
+			int fd;
+
+			if (strcmp(mapname, pin_map->name) != 0)
+				continue;
+
+			/* Matched, try opening pinned file */
+			fd = bpf_obj_get(pin_map->filename);
+			if (fd > 0) {
+				/* Use FD from pinned map as replacement */
+				bpf_map__reuse_fd(map, fd);
+				/* TODO: Might want to set internal map "name"
+				 * if opened pinned map didn't, to allow
+				 * bpf_object__find_map_fd_by_name() to work.
+				 */
+				pin_map->map_fd = fd;
+				continue;
+			}
+			/* Could not open pinned filename map, then this prog
+			 * should then pin the map, BUT this can only happen
+			 * after bpf_object__load().
+			 */
+		}
+	}
+
+	if (!first_prog) {
+		pr_warning("object file doesn't contain bpf program\n");
+		bpf_object__close(obj);
+		return -ENOENT;
+	}
+
+	err = bpf_object__load(obj);
+	if (err) {
+		bpf_object__close(obj);
+		return -EINVAL;
+	}
+
+	/* Pin the maps that were not loaded via pinned filename */
+	bpf_map__for_each(map, obj) {
+		const char* mapname = bpf_map__name(map);
+
+		for (i = 0; i < attr->nr_pinned_maps; i++) {
+			struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
+			int err;
+
+			if (strcmp(mapname, pin_map->name) != 0)
+				continue;
+
+			/* Matched, check if map is already loaded */
+			if (pin_map->map_fd != -1)
+				continue;
+
+			/* Needs to be pinned */
+			err = bpf_map__pin(map, pin_map->filename);
+			if (err)
+				continue;
+			pin_map->map_fd = bpf_map__fd(map);
+		}
+	}
+
+	*pobj = obj;
+	*prog_fd = bpf_program__fd(first_prog);
+	return 0;
+}
+
+
 int main(int argc, char **argv)
 {
 	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
@@ -272,10 +453,6 @@ int main(int argc, char **argv)
 	int opt;
 
 	/* libbpf */
-	struct bpf_object_open_attr prog_open_attr = {
-		.prog_type	= BPF_PROG_TYPE_XDP,
-	};
-
 	struct bpf_prog_info info = {};
 	__u32 info_len = sizeof(info);
 	struct bpf_program * bpf_prog;
@@ -283,6 +460,20 @@ int main(int argc, char **argv)
 	struct bpf_map *map;
 	int pinned_file_fd;
 	int prog_fd;
+
+	struct bpf_object_open_attr prog_open_attr = {
+		.prog_type	= BPF_PROG_TYPE_XDP,
+	};
+
+	struct bpf_pinned_map my_pinned_maps[1];
+	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
+		.prog_type	= BPF_PROG_TYPE_XDP,
+		.nr_pinned_maps	= 1,
+	};
+	my_pinned_maps[0].name     = "map_ip_hash";
+	my_pinned_maps[0].filename = mapfile_ip_hash;
+
+	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 
 	/* Notice: choosing the queue size is very important with the
 	 * ixgbe driver, because it's driver page recycling trick is
@@ -298,7 +489,8 @@ int main(int argc, char **argv)
 			filename, errno, strerror(errno));
 		return EXIT_FAIL;
 	}
-	prog_open_attr.file = filename;
+	//prog_open_attr.file = filename;
+	prog_load_attr_maps.file = filename;
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "hSrqdwlc:",
@@ -403,6 +595,12 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	if (bpf_prog_load_xattr_maps(&prog_load_attr_maps, &obj, &prog_fd)) {
+		fprintf(stderr,"ERR: Failed loading BPF-prog\n");
+		return EXIT_FAIL_BPF;
+	}
+
+#if 0
 	/*
 	 * Instead of using bpf_prog_load_xattr(), go through the
 	 * steps bpf_object__open + bpf_object__load and in-between,
@@ -458,11 +656,11 @@ int main(int argc, char **argv)
 			return EXIT_FAIL;
 		}
 	}
-
+#endif
 	if (owner >= 0)
 		chown_maps(owner, group, mapfile_ip_hash);
 
-	if (init_map_fds(obj, pinned_file_fd) < 0) {
+	if (init_map_fds(obj, &prog_load_attr_maps) < 0) {
 		fprintf(stderr, "bpf_object__find_map_fd_by_name failed\n");
 		return EXIT_FAIL;
 	}
