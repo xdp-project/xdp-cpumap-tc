@@ -19,13 +19,8 @@
 #define u32 __u32
 #define u64 __u64
 
-/* Interface direction WARNING - sync with _user.c */
-#define INTERFACE_WAN      (1 << 0)
-#define INTERFACE_LAN      (1 << 1)
-
 #define DEBUG
 
-#define MAX_CPUS 64 /* WARNING - sync with _user.c */
 struct vlan_hdr {
 	__be16 h_vlan_TCI;
 	__be16 h_vlan_encapsulated_proto;

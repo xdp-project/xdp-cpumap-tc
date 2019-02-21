@@ -39,12 +39,6 @@ static const char *__doc__=
 #include "common_user.h"
 #include "common_kern_user.h"
 
-/* Interface direction WARNING - sync with _user.c */
-#define INTERFACE_WAN      (1 << 0)
-#define INTERFACE_LAN      (1 << 1)
-
-#define MAX_CPUS 64 /* WARNING - sync with _kern.c */
-
 static char ifname_buf[IF_NAMESIZE];
 static char *ifname = NULL;
 static int ifindex = -1;

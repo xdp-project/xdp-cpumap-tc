@@ -4,6 +4,12 @@
 #ifndef __COMMON_KERN_USER_H
 #define __COMMON_KERN_USER_H
 
+/* Interface direction */
+#define INTERFACE_WAN	(1 << 0)
+#define INTERFACE_LAN	(1 << 1)
+
+#define MAX_CPUS 64
+
 /* Data structure used for map_txq_config */
 struct txq_config {
 	/* lookup key: __u32 cpu; */
