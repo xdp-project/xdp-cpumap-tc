@@ -2,8 +2,13 @@
 #include <linux/bpf.h>
 #include <linux/pkt_cls.h>
 #include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
-
 #include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <linux/if_vlan.h>
+#include <linux/ip.h>
+#include <linux/in.h>
+
+#include <stdbool.h>
 
 #include "bpf_endian.h"
 #include "common_kern_user.h"
@@ -18,6 +23,11 @@
  tc filter list dev ixgbe2 egress
 
 */
+
+struct vlan_hdr {
+	__be16 h_vlan_TCI;
+	__be16 h_vlan_encapsulated_proto;
+};
 
 /* iproute2 use another ELF map layout than libbpf.  The PIN_GLOBAL_NS
  * will cause map to be exported to /sys/fs/bpf/tc/globals/
@@ -120,6 +130,56 @@ struct ip_hdr *get_ipv4_hdr(struct __sk_buff *skb)
 }
 */
 
+/* Parse Ethernet layer 2, extract network layer 3 offset and protocol
+ *
+ * Returns false on error and non-supported ether-type
+ */
+static __always_inline
+bool parse_eth(struct ethhdr *eth, void *data_end,
+	       __u16 *eth_proto, __u32 *l3_offset)
+{
+	__u16 eth_type;
+	__u64 offset;
+
+	offset = sizeof(*eth);
+	if ((void *)eth + offset > data_end)
+		return false;
+
+	eth_type = eth->h_proto;
+	bpf_debug("Debug: eth_type:0x%x\n", bpf_ntohs(eth_type));
+
+	/* Skip non 802.3 Ethertypes */
+	if (bpf_ntohs(eth_type) < ETH_P_802_3_MIN)
+		return false;
+
+	/* Handle VLAN tagged packet */
+	if (eth_type == bpf_htons(ETH_P_8021Q) ||
+	    eth_type == bpf_htons(ETH_P_8021AD)) {
+		struct vlan_hdr *vlan_hdr;
+
+		vlan_hdr = (void *)eth + offset;
+		offset += sizeof(*vlan_hdr);
+		if ((void *)eth + offset > data_end)
+			return false;
+		eth_type = vlan_hdr->h_vlan_encapsulated_proto;
+	}
+	/* Handle double VLAN tagged packet */
+	if (eth_type == bpf_htons(ETH_P_8021Q) ||
+	    eth_type == bpf_htons(ETH_P_8021AD)) {
+		struct vlan_hdr *vlan_hdr;
+
+		vlan_hdr = (void *)eth + offset;
+		offset += sizeof(*vlan_hdr);
+		if ((void *)eth + offset > data_end)
+			return false;
+		eth_type = vlan_hdr->h_vlan_encapsulated_proto;
+	}
+
+	*eth_proto = bpf_ntohs(eth_type);
+	*l3_offset = offset;
+	return true;
+}
+
 
 /* Quick manual reload command:
  tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
@@ -134,6 +194,13 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	__u32 ifindex;
 	__u32 ip = 0;
 
+	/* For packet parsing */
+	void *data_end = (void *)(long)skb->data_end;
+	void *data     = (void *)(long)skb->data;
+	struct ethhdr *eth = data;
+	__u16 eth_proto = 0;
+	__u32 l3_offset = 0;
+
 	cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
         if (!cfg)
                 return TC_ACT_SHOT;
@@ -145,13 +212,9 @@ int  tc_cls_prog(struct __sk_buff *skb)
 			  cpu, skb->queue_mapping);
 	}
 
-	// TODO: Verify that the TC handle major number in
-	// skb->priority field is correct.
-
-	// TODO lookup IPv4-addr
-
-	/* The protocol is already known via SKB info, (but how to
-	 * handle if there are VLANs?)
+	/* The protocol is already known via SKB info. But due to
+	 * double VLAN tagging, we still need to parse eth-headers.
+	 * The skb->{vlan_present,vlan_tci} can only show outer VLAN.
 	 */
 	switch (skb->protocol) {
 	case bpf_htons(ETH_P_IPV6):
@@ -164,6 +227,20 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	default:
 		bpf_debug("Not handling proto:0x%x\n", skb->protocol);
 	}
+
+
+	if (!(parse_eth(eth, data_end, &eth_proto, &l3_offset))) {
+		bpf_debug("Cannot parse L2: L3off:%llu proto:0x%x\n",
+			  l3_offset, eth_proto);
+		return TC_ACT_OK; /* Skip */
+	}
+	bpf_debug("Reached L3: L3off:%llu proto:0x%x\n", l3_offset, eth_proto);
+
+
+	// TODO: Verify that the TC handle major number in
+	// skb->priority field is correct.
+
+	// TODO lookup IPv4-addr
 
 	// TODO: Need to know the "direction", via map_ifindex_type
 	ifindex = skb->ifindex;
