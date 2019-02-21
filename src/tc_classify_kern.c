@@ -97,7 +97,7 @@ struct bpf_elf_map SEC("maps") map_ifindex_type = {
  */
 #define bpf_debug(fmt, ...)                                             \
                 ({                                                      \
-                        char ____fmt[] = fmt;                           \
+                        char ____fmt[] = "(tc) " fmt;			\
                         bpf_trace_printk(____fmt, sizeof(____fmt),      \
                                      ##__VA_ARGS__);                    \
                 })

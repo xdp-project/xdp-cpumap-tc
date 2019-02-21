@@ -59,7 +59,7 @@ struct bpf_map_def SEC("maps") cpus_available = {
  */
 #define bpf_debug(fmt, ...)                                             \
                 ({                                                      \
-                        char ____fmt[] = fmt;                           \
+                        char ____fmt[] = "(xdp) " fmt;			\
                         bpf_trace_printk(____fmt, sizeof(____fmt),      \
                                      ##__VA_ARGS__);                    \
                 })
