@@ -43,6 +43,7 @@ clean:
 	rm -f $(TARGET)
 	rm -f $(XDP_OBJ)
 	rm -f $(USER_OBJ)
+	rm -f $(COMMON_USER_OBJ)
 	rm -f *.ll
 	rm -f *~
 
@@ -64,7 +65,7 @@ $(OBJECT_LIBBPF):
 		mkdir -p root; DESTDIR=root $(MAKE) install_headers; \
 	fi
 
-COMMON_USER_OBJ: common_user.c common_user.h
+$(COMMON_USER_OBJ): common_user.c common_user.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 # Define dependencies to other files
