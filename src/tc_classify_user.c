@@ -10,6 +10,7 @@ static const char *__doc__=
 #include <unistd.h>
 #include <linux/types.h>
 #include <getopt.h>
+#include <net/if.h>
 
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
@@ -167,19 +168,22 @@ bool single_cpu_setup(int map_fd, __s64 set_cpu, struct txq_config txq_cfg,
 	return true;
 }
 
+static char ifname_buf[IF_NAMESIZE];
+static char *ifname = NULL;
+static int ifindex = -1;
+
 int main(int argc, char **argv)
 {
 	int opt, longindex = 0;
 	struct txq_config txq_cfg;
 	bool set_queue_mapping = false;
 	bool set_htb_major = false;
+	bool do_map_init = false;
+	bool do_list = false;
 	__s64 set_cpu = -1;
 
-	if ((map_txq_config_fd = open_bpf_map_file(mapfile_txq_config)) < 0) {
-		fprintf(stderr,
-			"ERR: cannot proceed without access to config map\n");
-		return EXIT_FAIL;
-	}
+	/* Try opening txq_config map for CPU to queue_mapping */
+	map_txq_config_fd = open_bpf_map_file(mapfile_txq_config);
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "hq",
@@ -189,12 +193,10 @@ int main(int argc, char **argv)
 			verbose = 0;
 			break;
 		case 'b':
-			if (!base_setup(map_txq_config_fd))
-				return EXIT_FAIL_MAP;
+			do_map_init = true;
 			break;
 		case 'l':
-			if (!list_setup(map_txq_config_fd))
-				return EXIT_FAIL_MAP;
+			do_list = true;
 			break;
 		case 'c':
 			set_cpu = strtoul(optarg, NULL, 0);
@@ -207,7 +209,29 @@ int main(int argc, char **argv)
 			set_htb_major = true;
 			txq_cfg.htb_major = strtoul(optarg, NULL, 16); /* Hex */
 			break;
+		case 'd':
+			if (strlen(optarg) >= IF_NAMESIZE) {
+				fprintf(stderr, "ERR: --dev name too long\n");
+				goto error;
+			}
+			ifname = (char *)&ifname_buf;
+			strncpy(ifname, optarg, IF_NAMESIZE);
+			ifindex = if_nametoindex(ifname);
+			if (ifindex == 0) {
+				fprintf(stderr,
+					"ERR: --dev name unknown err(%d):%s\n",
+					errno, strerror(errno));
+				goto error;
+			}
+			if (ifindex >= MAX_IFINDEX) {
+				fprintf(stderr,
+					"ERR: Fix MAX_IFINDEX err(%d):%s\n",
+					errno, strerror(errno));
+				goto error;
+			}
+			break;
 		case 'h':
+		error:
 		default:
 			usage(argv[0], __doc__);
 			return EXIT_FAIL_OPTION;
@@ -217,11 +241,56 @@ int main(int argc, char **argv)
 	if (verbose)
 		printf("%s Map name: %s\n", __doc__, mapfile_txq_config);
 
+	if (ifindex > 0 && !do_list) {
+		int err;
+		const char *filename = "tc_classify_kern.o";
+		const char *sec_name = "tc_classify";
+
+		if (verbose)
+			printf("Dev:%s -- Loading: TC-clsact egress\n", ifname);
+
+		err = tc_egress_attach_bpf(ifname, filename, sec_name);
+		if (err) {
+			fprintf(stderr, "ERR: dev:%s"
+				" Fail TC-clsact loading %s sec:%s\n",
+				ifname, filename, sec_name);
+			return err;
+		}
+
+		if (map_txq_config_fd < 0) {
+			/* Just loaded TC prog should have pinned it */
+			map_txq_config_fd =
+				open_bpf_map_file(mapfile_txq_config);
+			do_map_init = true;
+		}
+	}
+
+	if (do_map_init) {
+		if (!base_setup(map_txq_config_fd))
+			return EXIT_FAIL_MAP;
+	}
+
 	if (set_cpu >= 0 || set_queue_mapping || set_htb_major) {
+
+		if (map_txq_config_fd < 0) {
+			fprintf(stderr,
+			"ERR: cannot proceed without access to config map\n");
+			return EXIT_FAIL;
+		}
+
 		if (!single_cpu_setup(map_txq_config_fd, set_cpu, txq_cfg,
 				      set_queue_mapping, set_htb_major))
 			return EXIT_FAIL_OPTION;
 	}
+
+	if (do_list) {
+		if (!list_setup(map_txq_config_fd))
+			return EXIT_FAIL_MAP;
+
+		if (ifindex > 0)
+			tc_list_egress_filter(ifname);
+	}
+
 
 	return EXIT_OK;
 }
