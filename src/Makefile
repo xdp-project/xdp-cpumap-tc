@@ -10,7 +10,7 @@ TC_TARGETS += tc_queue_mapping
 
 LLC ?= llc
 CLANG ?= clang
-CC ?= gcc
+CC := gcc
 
 LIBBPF_DIR = ../libbpf/src/
 

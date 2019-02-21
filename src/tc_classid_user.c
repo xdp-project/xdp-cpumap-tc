@@ -81,7 +81,7 @@ bool list_setup(int map_fd) {
 		if (err) {
 			fprintf(stderr,
 				"ERR: %s() lookup cpu-key:%d err(%d):%s\n",
-				__func__, errno, strerror(errno));
+				__func__, cpu, errno, strerror(errno));
 			return false;
 		}
 
@@ -90,6 +90,7 @@ bool list_setup(int map_fd) {
 	}
 
 	printf("|-----------+---------------+-----------|\n");
+	return true;
 }
 
 /*
@@ -121,7 +122,7 @@ bool base_setup(int map_fd) {
 		if (err) {
 			fprintf(stderr,
 				"ERR: %s() updating cpu-key:%d err(%d):%s\n",
-				__func__, errno, strerror(errno));
+				__func__, cpu, errno, strerror(errno));
 			return false;
 		}
 	}
@@ -155,7 +156,7 @@ bool single_cpu_setup(int map_fd, __s64 set_cpu, struct txq_config txq_cfg,
 	if (err) {
 		fprintf(stderr,
 			"ERR: %s() updating cpu-key:%d err(%d):%s\n",
-			__func__, errno, strerror(errno));
+			__func__, cpu, errno, strerror(errno));
 		return false;
 	}
 	if (verbose) {
@@ -207,7 +208,6 @@ int main(int argc, char **argv)
 			txq_cfg.htb_major = strtoul(optarg, NULL, 16); /* Hex */
 			break;
 		case 'h':
-		error:
 		default:
 			usage(argv[0], __doc__);
 			return EXIT_FAIL_OPTION;
