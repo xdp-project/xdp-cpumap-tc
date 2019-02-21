@@ -54,6 +54,15 @@ struct bpf_elf_map SEC("maps") map_txq_config = {
         .max_elem   = MAX_CPUS,
 };
 
+/* Map shared with XDP programs */
+struct bpf_elf_map SEC("maps") map_ifindex_type = {
+        .type	    = BPF_MAP_TYPE_ARRAY,
+        .size_key   = sizeof(__u32),
+        .size_value = sizeof(struct txq_config),
+        .pinning    = PIN_GLOBAL_NS,/* /sys/fs/bpf/tc/globals/map_ifindex_type*/
+        .max_elem   = MAX_IFINDEX,
+};
+
 /*
   CPU config map table (struct txq_config):
 
@@ -121,6 +130,8 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	__u32 cpu = bpf_get_smp_processor_id();
 	struct txq_config *cfg;
 	struct ip_hash_info *ip_info;
+	__u32 *ifindex_type;
+	__u32 ifindex;
 	__u32 ip = 0;
 
 	cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
@@ -152,6 +163,13 @@ int  tc_cls_prog(struct __sk_buff *skb)
 		bpf_debug("Not handling proto:0x%x\n", skb->protocol);
 	}
 
+	// TODO: Need to know the "direction", via map_ifindex_type
+	ifindex = skb->ifindex;
+	ifindex_type = bpf_map_lookup_elem(&map_ifindex_type, &ifindex);
+	/* TC hook at egress, then WAN use IP-source iph->saddr */
+	if (ifindex_type && *ifindex_type == INTERFACE_WAN)
+		bpf_debug("ifindex:%d type:WAN\n", ifindex);
+
 	// Just use map_ip_hash for something
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
 	if (!ip_info)
@@ -159,6 +177,7 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	if (ip_info->cpu != cpu)
 		bpf_debug("Mismatch: Curr-CPU:%u but IP:%u wants CPU:%u\n",
 			  cpu, ip, ip_info->cpu);
+
 
 	return TC_ACT_OK;
 }
