@@ -146,7 +146,6 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_
 {
 	unsigned int possible_cpus = bpf_num_possible_cpus();
 	__u32 invalid_cpu = MAX_CPUS;
-	__u32 cpu_value;
 	int ret, i;
 
 	/* add all available CPUs in system  */
@@ -159,8 +158,6 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_
 		if (cpus[i] == true) {
 			create_cpu_entry(i, queue_size);
 		} else {
-			cpu_value = invalid_cpu;
-
 			/* map: cpus_available */
 			ret = bpf_map_update_elem(cpus_available_map_fd,
 						  &i, &invalid_cpu, 0);
@@ -175,7 +172,6 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_
 static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 {
 	const char *file = mapfile_ip_hash;
-	int i;
 
 	if (verbose) {
 		fprintf(stderr, "Removing XDP program on ifindex:%d device:%s\n",
@@ -191,48 +187,8 @@ static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 			file);
 }
 
-#ifndef BPF_FS_MAGIC
-# define BPF_FS_MAGIC   0xcafe4a11
-#endif
-
-/* Verify BPF-filesystem is mounted on given file path */
-static int bpf_fs_check_path(const char *path)
-{
-	struct statfs st_fs;
-	char *dname, *dir;
-	int err = 0;
-
-	if (path == NULL)
-		return -EINVAL;
-
-	dname = strdup(path);
-	if (dname == NULL)
-		return -ENOMEM;
-
-	dir = dirname(dname);
-	if (statfs(dir, &st_fs)) {
-		fprintf(stderr, "ERR: failed to statfs %s: (%d)%s\n",
-			dir, errno, strerror(errno));
-		err = -errno;
-	}
-	free(dname);
-
-	if (!err && st_fs.f_type != BPF_FS_MAGIC) {
-		fprintf(stderr,
-			"ERR: specified path %s is not on BPF FS\n\n"
-			" You need to mount the BPF filesystem type like:\n"
-			"  mount -t bpf bpf /sys/fs/bpf/\n\n",
-			path);
-		err = -EINVAL;
-	}
-
-	return err;
-}
-
 void chown_maps(uid_t owner, gid_t group, const char *file)
 {
-	int i;
-
 	/* Change permissions and user for the map file, as this allow
 	 * an unpriviliged user to operate the cmdline tool.
 	 */
@@ -314,7 +270,6 @@ int main(int argc, char **argv)
 	int add_cpu = -1;
 	int err;
 	int opt;
-	int i;
 
 	/* libbpf */
 	struct bpf_object_open_attr prog_open_attr = {
