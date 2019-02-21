@@ -73,7 +73,7 @@ struct bpf_map_def SEC("maps") cpus_available = {
  */
 static __always_inline
 bool parse_eth(struct ethhdr *eth, void *data_end,
-	       __u16 *eth_proto, __u64 *l3_offset)
+	       __u16 *eth_proto, __u32 *l3_offset)
 {
 	__u16 eth_type;
 	__u64 offset;
@@ -118,7 +118,7 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 }
 
 static __always_inline
-__u32 parse_ipv4(struct xdp_md *ctx, __u64 l3_offset, __u32 ifindex)
+__u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -191,7 +191,7 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u64 l3_offset, __u32 ifindex)
 }
 
 static __always_inline
-__u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u64 l3_offset,
+__u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 			  __u32 ifindex)
 {
 	int test;
@@ -220,7 +220,7 @@ int  xdp_program(struct xdp_md *ctx)
 	__u32 ifindex  = ctx->ingress_ifindex;
 	struct ethhdr *eth = data;
 	__u16 eth_proto = 0;
-	__u64 l3_offset = 0;
+	__u32 l3_offset = 0;
 	__u32 action;
 
 	if (!(parse_eth(eth, data_end, &eth_proto, &l3_offset))) {
