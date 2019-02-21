@@ -231,7 +231,7 @@ int  xdp_program(struct xdp_md *ctx)
 	bpf_debug("Reached L3: L3off:%llu proto:0x%x\n", l3_offset, eth_proto);
 
 	action = handle_eth_protocol(ctx, eth_proto, l3_offset, ifindex);
-	
+
         //stats_action_verdict(action);
 	return action;
 }

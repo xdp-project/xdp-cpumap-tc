@@ -119,17 +119,6 @@ struct bpf_elf_map SEC("maps") map_ifindex_type = {
 #define TC_H_MAJOR(x) TC_H_MAJ(x)
 #define TC_H_MINOR(x) TC_H_MIN(x)
 
-/*
-static inline
-struct ip_hdr *get_ipv4_hdr(struct __sk_buff *skb)
-{
-	void *data     = (void *) (long) skb->data;
-        void *data_end = (void *) (long) skb->data_end;
-
-	
-}
-*/
-
 /* Parse Ethernet layer 2, extract network layer 3 offset and protocol
  *
  * Returns false on error and non-supported ether-type
@@ -146,7 +135,6 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 		return false;
 
 	eth_type = eth->h_proto;
-	bpf_debug("Debug: eth_type:0x%x\n", bpf_ntohs(eth_type));
 
 	/* Skip non 802.3 Ethertypes */
 	if (bpf_ntohs(eth_type) < ETH_P_802_3_MIN)
@@ -180,6 +168,35 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 	return true;
 }
 
+static __always_inline
+__u32 get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type)
+{
+	void *data_end = (void *)(long)skb->data_end;
+	void *data     = (void *)(long)skb->data;
+	struct iphdr *iph = data + l3_offset;
+	__u32 ipv4 = 0;
+
+	if (iph + 1 > data_end) {
+		//bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
+		return 0;
+	}
+
+	/* The IP-addr to match against depend on the "direction" of
+	 * the packet.  This TC hook runs at egress.
+	 */
+	switch (ifindex_type) {
+	case INTERFACE_WAN: /* Egress on WAN interface: match on src IP */
+		ipv4 = iph->saddr;
+		break;
+	case INTERFACE_LAN: /* Egress on LAN interface: match on dst IP */
+		ipv4 = iph->daddr;
+		break;
+	default:
+		ipv4 = 0;
+	}
+
+	return ipv4;
+}
 
 /* Quick manual reload command:
  tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
@@ -188,10 +205,11 @@ SEC("tc_classify")
 int  tc_cls_prog(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
-	struct txq_config *cfg;
 	struct ip_hash_info *ip_info;
+	struct txq_config *cfg;
 	__u32 *ifindex_type;
 	__u32 ifindex;
+	__u32 action = TC_ACT_OK;
 	__u32 ip = 0;
 
 	/* For packet parsing */
@@ -200,6 +218,7 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	struct ethhdr *eth = data;
 	__u16 eth_proto = 0;
 	__u32 l3_offset = 0;
+	__u32 ipv4 = bpf_ntohl(0xFFFFFFFF); /* default not found */
 
 	cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
         if (!cfg)
@@ -212,53 +231,60 @@ int  tc_cls_prog(struct __sk_buff *skb)
 			  cpu, skb->queue_mapping);
 	}
 
-	/* The protocol is already known via SKB info. But due to
-	 * double VLAN tagging, we still need to parse eth-headers.
-	 * The skb->{vlan_present,vlan_tci} can only show outer VLAN.
+	/* Ethernet header parsing: The protocol is already known via
+	 * skb->protocol (host-byte-order). But due to double VLAN
+	 * tagging, we still need to parse eth-headers.  The
+	 * skb->{vlan_present,vlan_tci} can only show outer VLAN.
 	 */
-	switch (skb->protocol) {
-	case bpf_htons(ETH_P_IPV6):
-		/* Not implemented */
-		break;
-	case bpf_htons(ETH_P_IP):
-		bpf_debug("Seeing ETH_P_IP\n");
-		// ret = handle_ipv4(skb);
-		break;
-	default:
-		bpf_debug("Not handling proto:0x%x\n", skb->protocol);
-	}
-
-
 	if (!(parse_eth(eth, data_end, &eth_proto, &l3_offset))) {
 		bpf_debug("Cannot parse L2: L3off:%llu proto:0x%x\n",
 			  l3_offset, eth_proto);
 		return TC_ACT_OK; /* Skip */
 	}
-	bpf_debug("Reached L3: L3off:%llu proto:0x%x\n", l3_offset, eth_proto);
+	bpf_debug("Reached L3: L3off:%llu proto:0x%x skb_proto:0x%x\n",
+		  l3_offset, eth_proto, skb->protocol);
 
+	/* Get interface "direction" via map_ifindex_type */
+	ifindex = skb->ifindex;
+	ifindex_type = bpf_map_lookup_elem(&map_ifindex_type, &ifindex);
+	if (!ifindex_type)
+		return TC_ACT_OK;
+
+	/* Get IP addr to match against */
+	switch (eth_proto) {
+	case ETH_P_IP:
+		ipv4 = get_ipv4_addr(skb, l3_offset, *ifindex_type);
+		if (!ipv4)
+			return TC_ACT_OK;
+		break;
+	case ETH_P_IPV6: /* No handler for IPv6 yet */
+	case ETH_P_ARP:  /* Let OS handle ARP */
+		// TODO: Should we choose a special classid for these?
+		/* Fall-through */
+	default:
+		// bpf_debug("Not handling eth_proto:0x%x\n", eth_proto);
+		return TC_ACT_OK;
+	}
+
+	// action = handle_eth_protocol(skb, eth_proto, l3_offset, ifindex);
 
 	// TODO: Verify that the TC handle major number in
 	// skb->priority field is correct.
 
 	// TODO lookup IPv4-addr
 
-	// TODO: Need to know the "direction", via map_ifindex_type
-	ifindex = skb->ifindex;
-	ifindex_type = bpf_map_lookup_elem(&map_ifindex_type, &ifindex);
-	/* TC hook at egress, then WAN use IP-source iph->saddr */
-	if (ifindex_type && *ifindex_type == INTERFACE_WAN)
-		bpf_debug("ifindex:%d type:WAN\n", ifindex);
-
 	// Just use map_ip_hash for something
-	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
 	if (!ip_info)
 		return TC_ACT_OK;
+
 	if (ip_info->cpu != cpu)
 		bpf_debug("Mismatch: Curr-CPU:%u but IP:%u wants CPU:%u\n",
 			  cpu, ip, ip_info->cpu);
 
 
-	return TC_ACT_OK;
+	//return TC_ACT_OK;
+	return action;
 }
 
 char _license[] SEC("license") = "GPL";
