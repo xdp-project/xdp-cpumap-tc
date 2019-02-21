@@ -234,18 +234,6 @@ void chown_maps(uid_t owner, gid_t group, const char *file)
 			file, errno, strerror(errno));
 }
 
-int open_bpf_map(const char *file)
-{
-	int fd;
-
-	fd = bpf_obj_get(file);
-	if (fd < 0) {
-		printf("WARN: Failed to open bpf map file:%s err(%d):%s\n",
-		       file, errno, strerror(errno));
-	}
-	return fd;
-}
-
 bool locate_kern_object(char *execname, char *filename, size_t size)
 {
 	char *basec, *bname;
