@@ -210,7 +210,6 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	__u32 *ifindex_type;
 	__u32 ifindex;
 	__u32 action = TC_ACT_OK;
-	__u32 ip = 0;
 
 	/* For packet parsing */
 	void *data_end = (void *)(long)skb->data_end;
@@ -266,22 +265,27 @@ int  tc_cls_prog(struct __sk_buff *skb)
 		return TC_ACT_OK;
 	}
 
-	// action = handle_eth_protocol(skb, eth_proto, l3_offset, ifindex);
+	// Just use map_ip_hash for something
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
+	if (!ip_info) {
+		bpf_debug("Misconf: FAILED lookup IP:%x\n", ipv4);
+		// TODO: Assign to some default classid?
+		return TC_ACT_OK;
+	}
+
+	if (ip_info->cpu != cpu)
+		bpf_debug("Mismatch: Curr-CPU:%u but IP:%x wants CPU:%u\n",
+			  cpu, ipv4, ip_info->cpu);
 
 	// TODO: Verify that the TC handle major number in
 	// skb->priority field is correct.
 
-	// TODO lookup IPv4-addr
+	// TODO: Control skb->priority (TC-handle)
+	if (ip_info->tc_handle != 0)
+		skb->priority = ip_info->tc_handle;
 
-	// Just use map_ip_hash for something
-	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
-	if (!ip_info)
-		return TC_ACT_OK;
-
-	if (ip_info->cpu != cpu)
-		bpf_debug("Mismatch: Curr-CPU:%u but IP:%u wants CPU:%u\n",
-			  cpu, ip, ip_info->cpu);
-
+	bpf_debug("Lookup IP:%x prio:0x%x tc_handle:0x%x\n",
+		  ipv4, skb->priority, ip_info->tc_handle);
 
 	//return TC_ACT_OK;
 	return action;
