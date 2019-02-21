@@ -4,11 +4,18 @@
 #ifndef __COMMON_KERN_USER_H
 #define __COMMON_KERN_USER_H
 
-/* Interface direction */
+/* Interface (ifindex) direction type */
+#define INTERFACE_NONE	0	/* Not configured */
 #define INTERFACE_WAN	(1 << 0)
 #define INTERFACE_LAN	(1 << 1)
 
 #define MAX_CPUS 64
+
+/* This ifindex limit is an artifical limit that can easily be bumped.
+ * The reason for this is allowing to use a faster BPF_MAP_TYPE_ARRAY
+ * in fast-path lookups.
+ */
+#define MAX_IFINDEX 256
 
 /* Data structure used for map_txq_config */
 struct txq_config {

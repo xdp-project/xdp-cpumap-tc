@@ -26,6 +26,22 @@ struct vlan_hdr {
 	__be16 h_vlan_encapsulated_proto;
 };
 
+/* Pinned shared map: see mapfile_ip_hash */
+struct bpf_map_def SEC("maps") map_ip_hash = {
+	.type        = BPF_MAP_TYPE_HASH,
+	.key_size    = sizeof(u32),
+	.value_size  = sizeof(struct ip_hash_info),
+	.max_entries = IP_HASH_ENTRIES_MAX,
+};
+
+/* TODO: Pinned shared map */
+struct bpf_map_def SEC("maps") ifindex_type = {
+	.type        = BPF_MAP_TYPE_ARRAY,
+	.key_size    = sizeof(u32),
+	.value_size  = sizeof(u32),
+	.max_entries = MAX_IFINDEX,
+};
+
 /* Special map type that can XDP_REDIRECT frames to another CPU */
 struct bpf_map_def SEC("maps") cpu_map = {
 	.type		= BPF_MAP_TYPE_CPUMAP,
@@ -33,23 +49,12 @@ struct bpf_map_def SEC("maps") cpu_map = {
 	.value_size	= sizeof(u32),
 	.max_entries	= MAX_CPUS,
 };
-struct bpf_map_def SEC("maps") map_ip_hash = {
-	.type        = BPF_MAP_TYPE_HASH,
-	.key_size    = sizeof(u32),
-	.value_size  = sizeof(struct ip_hash_info),
-	.max_entries = IP_HASH_ENTRIES_MAX,
-};
+
 struct bpf_map_def SEC("maps") cpus_available = {
         .type           = BPF_MAP_TYPE_ARRAY,
         .key_size       = sizeof(u32),
         .value_size     = sizeof(u32),
         .max_entries    = MAX_CPUS,
-};
-struct bpf_map_def SEC("maps") cpu_direction = {
-	.type        = BPF_MAP_TYPE_HASH,
-	.key_size    = sizeof(u32),
-	.value_size  = sizeof(u32),
-	.max_entries = 3,
 };
 
 #ifdef  DEBUG
@@ -136,12 +141,12 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 		bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
 		return XDP_PASS;
 	}
-	/* Wan of lan interface? */
-	direction_lookup = bpf_map_lookup_elem(&cpu_direction, &ifindex);
+	/* WAN or LAN interface? */
+	direction_lookup = bpf_map_lookup_elem(&ifindex_type, &ifindex);
 	if (!direction_lookup)
 		return XDP_PASS;
 	direction = *direction_lookup;
-	/* Extract key */
+	/* Extract key, XDP operate at "ingress" */
 	if (direction == INTERFACE_WAN) {
 		ip = iph->daddr;
 	} else if (direction == INTERFACE_LAN) {

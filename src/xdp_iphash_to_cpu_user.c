@@ -80,13 +80,13 @@ static void usage(char *argv[])
 static int cpu_map_fd = -1;
 static int ip_hash_map_fd = -1;
 static int cpus_available_map_fd  = -1;
-static int cpu_direction_map_fd  = -1;
+static int ifindex_type_map_fd  = -1;
 
 static int init_map_fds(struct bpf_object *obj, int pinned_file_fd)
 {
 	cpu_map_fd            = bpf_object__find_map_fd_by_name(obj, "cpu_map");
 	cpus_available_map_fd = bpf_object__find_map_fd_by_name(obj, "cpus_available");
-	cpu_direction_map_fd  = bpf_object__find_map_fd_by_name(obj, "cpu_direction");
+	ifindex_type_map_fd   = bpf_object__find_map_fd_by_name(obj, "ifindex_type");
 
 	/* If an old TC tool created and pinned map then it have no "name".
 	 * In that case use the FD from opening the pinned file.
@@ -96,7 +96,7 @@ static int init_map_fds(struct bpf_object *obj, int pinned_file_fd)
 		ip_hash_map_fd = pinned_file_fd;
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
-	    cpus_available_map_fd < 0 || cpu_direction_map_fd < 0)
+	    cpus_available_map_fd < 0 || ifindex_type_map_fd < 0)
 		return -ENOENT;
 
 	return 0;
@@ -166,13 +166,19 @@ static void mark_cpus_available(bool cpus[MAX_CPUS], __u32 queue_size, bool add_
 static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 {
 	const char *file = mapfile_ip_hash;
+	__u32 dir = INTERFACE_NONE;
 
 	if (verbose) {
 		fprintf(stderr, "Removing XDP program on ifindex:%d device:%s\n",
 			ifindex, ifname);
 	}
-	if (ifindex > -1)
+	if (ifindex > -1) {
 		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+		if (bpf_map_update_elem(ifindex_type_map_fd,
+					&ifindex, &dir, 0) < 0) {
+			fprintf(stderr, "ERR: Clear ifindex type failed \n");
+		}
+	}
 
 	/* map file is possibly share, cannot remove it here */
 	if (verbose)
@@ -328,6 +334,12 @@ int main(int argc, char **argv)
 					errno, strerror(errno));
 				goto error;
 			}
+			if (ifindex >= MAX_IFINDEX) {
+				fprintf(stderr,
+					"ERR: Fix MAX_IFINDEX err(%d):%s\n",
+					errno, strerror(errno));
+				goto error;
+			}
 			break;
 		case 'S':
 			xdp_flags |= XDP_FLAGS_SKB_MODE;
@@ -461,10 +473,9 @@ int main(int argc, char **argv)
 	 */
 	mark_cpus_available(cpus, qsize, add_all_cpus);
 
-	/* Set lan or wan direction */
-	/* map: cpu_direction */
-	if (bpf_map_update_elem(cpu_direction_map_fd, &ifindex, &dir, 0) < 0) {
-		fprintf(stderr, "ERR: create CPU direction failed \n");
+	/* Set LAN or WAN type direction */
+	if (bpf_map_update_elem(ifindex_type_map_fd, &ifindex, &dir, 0) < 0) {
+		fprintf(stderr, "ERR: create ifindex direction type failed \n");
 		return (EXIT_FAIL_BPF);
 	}
 	if ((err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags)) < 0) {
