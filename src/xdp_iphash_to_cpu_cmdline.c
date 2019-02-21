@@ -61,26 +61,6 @@ static void usage(char *argv[])
 	}
 	printf("\n");
 }
-static __u32 get_key32_value32(int fd, __u32 key)
-{
-	/* For percpu maps, userspace gets a value per possible CPU */
-	/* unsigned int nr_cpus = bpf_num_possible_cpus();
-	__u64 values[nr_cpus];
-	__u64 sum = 0; */
-	__u32 value;
-	//res = inet_pton(AF_INET, ip_string, &key);
-	if ((bpf_map_lookup_elem(fd, &key, &value)) != 0) {
-		fprintf(stderr,
-			"ERR:%i, bpf_map_lookup_elem failed key:%i %i \n",errno, key, value);
-		return 0;
-	}
-	return value;
-	/* Sum values from each CPU */
-	/*for (i = 0; i < nr_cpus; i++) {
-		sum += values[i];
-	} */
-	//return sum;
-}
 
 static bool get_key32_value_ip_info(int fd, __u32 key, struct ip_hash_info *ip_info)
 {
@@ -135,13 +115,12 @@ static void iphash_list_all_ipv4(int fd)
 }
 static void iphash_clear_all_ipv4(int fd)
 {
-	__u32 key, *prev_key = NULL;
-	__u32 value;
-        int res;
 	char ip_txt[INET_ADDRSTRLEN] = {0};
+	__u32 key, *prev_key = NULL;
+
 	while (bpf_map_get_next_key(fd, prev_key, &key) == 0) {
                 inet_ntop(AF_INET, &key, ip_txt, sizeof(ip_txt));
-		res = iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0);
+		iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0);
 		prev_key = &key;
 	}
 }
@@ -164,12 +143,12 @@ int get_tc_classid(__u32 *h, const char *str)
 	__u32 major, minor;
 	char *p;
 
-//	major = TC_H_ROOT;
-//	if (strcmp(str, "root") == 0)
-//		goto ok;
-//	major = TC_H_UNSPEC;
-//	if (strcmp(str, "none") == 0)
-//		goto ok;
+	major = TC_H_ROOT;
+	if (strcmp(str, "root") == 0)
+		goto ok;
+	major = TC_H_UNSPEC;
+	if (strcmp(str, "none") == 0)
+		goto ok;
 	major = strtoul(str, &p, 16);
 	if (p == str) {
 		major = 0;
@@ -252,16 +231,12 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (do_list) {
-		int i;
-
 		fd = open_bpf_map(mapfile_ip_hash);
 		iphash_list_all_ipv4(fd);
 		close(fd);
 		return EXIT_OK;
 	}
 	if (do_clear) {
-		int i;
-
 		fd = open_bpf_map(mapfile_ip_hash);
 		iphash_clear_all_ipv4(fd);
 		close(fd);
