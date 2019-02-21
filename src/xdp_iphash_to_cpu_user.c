@@ -116,13 +116,14 @@ static int find_map_fd_by_name(struct bpf_object *obj,
 	for (i = 0; i < attr->nr_pinned_maps; i++) {
 		struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
 
-		printf("mapname: %s  pin->name:%s\n", mapname, pin_map->name);
 		if (strcmp(mapname, pin_map->name) != 0)
 				continue;
 
 		/* Matched, use FD stored in bpf_pinned_map */
 		map_fd = pin_map->map_fd;
-		printf("mapname: %s map_fd:%d\n", mapname, map_fd);
+		if (verbose)
+			printf("TC workaround for mapname: %s map_fd:%d\n",
+			       mapname, map_fd);
 	}
 	return map_fd;
 }
