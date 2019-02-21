@@ -14,11 +14,10 @@
 
  tc qdisc  del dev ixgbe2 clsact # clears all
  tc qdisc  add dev ixgbe2 clsact
- tc filter add dev ixgbe2 egress bpf da obj tc_classid_kern.o sec tc_class
+ tc filter add dev ixgbe2 egress bpf da obj tc_classify_kern.o sec tc_classify
  tc filter list dev ixgbe2 egress
 
 */
-#define MAX_CPUS 64
 
 /* iproute2 use another ELF map layout than libbpf.  The PIN_GLOBAL_NS
  * will cause map to be exported to /sys/fs/bpf/tc/globals/
@@ -91,7 +90,6 @@ struct bpf_elf_map SEC("maps") map_ifindex_type = {
 
  */
 
-
 #define DEBUG 1
 #ifdef  DEBUG
 /* Only use this for debug output. Notice output from bpf_trace_printk()
@@ -124,9 +122,9 @@ struct ip_hdr *get_ipv4_hdr(struct __sk_buff *skb)
 
 
 /* Quick manual reload command:
- tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classid_kern.o sec tc_class
+ tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
  */
-SEC("tc_class")
+SEC("tc_classify")
 int  tc_cls_prog(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
