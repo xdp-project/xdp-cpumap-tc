@@ -244,48 +244,6 @@ void chown_maps(uid_t owner, gid_t group, const char *file)
 			file, errno, strerror(errno));
 }
 
-bool locate_kern_object(char *execname, char *filename, size_t size)
-{
-	char *basec, *bname;
-
-	snprintf(filename, size, "%s_kern.o", execname);
-
-	if (access(filename, F_OK) != -1 )
-		return true;
-
-	/* Cannot find the _kern.o ELF object file directly.
-	 * Lets start searching for it in different paths.
-	 */
-	basec = strdup(execname);
-	if (basec == NULL)
-		return false;
-	bname = basename(basec);
-
-	/* Maybe enough to add a "./" */
-	snprintf(filename, size, "./%s_kern.o", bname);
-	if (access( filename, F_OK ) != -1 ) {
-		free(basec);
-		return true;
-	}
-
-	/* Maybe /usr/local/lib/ */
-	snprintf(filename, size, "/usr/local/lib/%s_kern.o", bname);
-	if (access( filename, F_OK ) != -1 ) {
-		free(basec);
-		return true;
-	}
-
-	/* Maybe /usr/local/bin/ */
-	snprintf(filename, size, "/usr/local/bin/%s_kern.o", bname);
-	if (access(filename, F_OK) != -1 ) {
-		free(basec);
-		return true;
-	}
-
-	free(basec);
-	return false;
-}
-
 /* From: include/linux/err.h */
 #define MAX_ERRNO       4095
 #define IS_ERR_VALUE(x) ((x) >= (unsigned long)-MAX_ERRNO)

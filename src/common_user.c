@@ -1,6 +1,9 @@
 #include <linux/types.h> /* __u32 */
 #include <stdio.h>       /* fprintf */
 #include <string.h>      /* strerror */
+#include <unistd.h>      /* access */
+#include <stdbool.h>     /* bool */
+#include <libgen.h>      /* dirname */
 #include <arpa/inet.h>   /* inet_pton */
 
 #include "common_user.h"
@@ -77,6 +80,49 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 			__func__, ip_string, key, tc_handle);
 	return EXIT_OK;
 }
+
+bool locate_kern_object(char *execname, char *filename, size_t size)
+{
+	char *basec, *bname;
+
+	snprintf(filename, size, "%s_kern.o", execname);
+
+	if (access(filename, F_OK) != -1 )
+		return true;
+
+	/* Cannot find the _kern.o ELF object file directly.
+	 * Lets start searching for it in different paths.
+	 */
+	basec = strdup(execname);
+	if (basec == NULL)
+		return false;
+	bname = basename(basec);
+
+	/* Maybe enough to add a "./" */
+	snprintf(filename, size, "./%s_kern.o", bname);
+	if (access( filename, F_OK ) != -1 ) {
+		free(basec);
+		return true;
+	}
+
+	/* Maybe /usr/local/lib/ */
+	snprintf(filename, size, "/usr/local/lib/%s_kern.o", bname);
+	if (access( filename, F_OK ) != -1 ) {
+		free(basec);
+		return true;
+	}
+
+	/* Maybe /usr/local/bin/ */
+	snprintf(filename, size, "/usr/local/bin/%s_kern.o", bname);
+	if (access(filename, F_OK) != -1 ) {
+		free(basec);
+		return true;
+	}
+
+	free(basec);
+	return false;
+}
+
 
 #define CMD_MAX 	2048
 #define CMD_MAX_TC	256
