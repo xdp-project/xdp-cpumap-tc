@@ -206,7 +206,7 @@ int  tc_cls_prog(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
 	struct ip_hash_info *ip_info;
-	struct txq_config *cfg;
+	struct txq_config *txq_cfg;
 	__u32 *ifindex_type;
 	__u32 ifindex;
 	__u32 action = TC_ACT_OK;
@@ -219,12 +219,12 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	__u32 l3_offset = 0;
 	__u32 ipv4 = bpf_ntohl(0xFFFFFFFF); /* default not found */
 
-	cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
-        if (!cfg)
+	txq_cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
+        if (!txq_cfg)
                 return TC_ACT_SHOT;
 
-	if (cfg->queue_mapping != 0) {
-		skb->queue_mapping = cfg->queue_mapping;
+	if (txq_cfg->queue_mapping != 0) {
+		skb->queue_mapping = txq_cfg->queue_mapping;
 	} else {
 		bpf_debug("Misconf: CPU:%u no conf (curr qm:%d)\n",
 			  cpu, skb->queue_mapping);
@@ -277,10 +277,19 @@ int  tc_cls_prog(struct __sk_buff *skb)
 		bpf_debug("Mismatch: Curr-CPU:%u but IP:%x wants CPU:%u\n",
 			  cpu, ipv4, ip_info->cpu);
 
-	// TODO: Verify that the TC handle major number in
-	// skb->priority field is correct.
+	/* Catch if TC handle major number mismatch, between CPU
+	 * config and ip_info config.
+	 * TODO: Can this be done setup time?
+	 */
+	__u16 ip_info_major = (TC_H_MAJOR(ip_info->tc_handle) >> 16);
+	if (txq_cfg->htb_major != ip_info_major)
+	{
+		// TODO: Could fixup MAJOR number
+		bpf_debug("Misconf: TC major(%d) mismatch %x\n",
+			  txq_cfg->htb_major, ip_info->tc_handle);
+	}
 
-	// TODO: Control skb->priority (TC-handle)
+	/* Setup skb->priority (TC-handle) based on ip_info */
 	if (ip_info->tc_handle != 0)
 		skb->priority = ip_info->tc_handle;
 
