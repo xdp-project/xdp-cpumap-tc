@@ -32,6 +32,8 @@ struct bpf_elf_map {
         __u32 flags;
         __u32 id;
         __u32 pinning;
+	__u32 inner_id;
+	__u32 inner_idx;
 };
 
 /* Map shared with XDP programs */
