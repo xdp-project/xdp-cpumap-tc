@@ -28,7 +28,7 @@ static const struct option long_options[] = {
 	{"quiet",	no_argument,		NULL, 'q' },
 	{"cpu",		required_argument,	NULL, 'c' },
 	{"queue-mapping",required_argument,	NULL, 'm' },
-	{"htb-major-hex",required_argument,	NULL, 'j' },
+	{"htb-major-hex",required_argument,	NULL, 'j' }, /* notice Hex base 16 */
 	{0, 0, NULL,  0 }
 };
 
@@ -74,7 +74,6 @@ bool list_setup(int map_fd) {
 	printf("|-----------+---------------+-----------|\n"
 	       "| key (cpu) | queue_mapping | htb_major |\n"
 	       "|-----------+---------------+-----------|\n");
-//	       "|      0    |             1 |         1 |\n");
 
 	for (cpu = 0; cpu < possible_cpus; cpu++) {
 
@@ -164,6 +163,7 @@ bool single_cpu_setup(int map_fd, __s64 set_cpu, struct txq_config txq_cfg,
 		       cpu, txq_cfg.queue_mapping, txq_cfg.htb_major);
 		list_setup(map_fd);
 	}
+	return true;
 }
 
 int main(int argc, char **argv)
@@ -181,7 +181,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hbq",
+	while ((opt = getopt_long(argc, argv, "hq",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':
