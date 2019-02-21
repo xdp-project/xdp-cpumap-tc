@@ -2,7 +2,7 @@
 
 TARGET := xdp_pass
 TARGET += xdp_iphash_to_cpu
-TARGET += tc_classid
+TARGET += tc_classify
 
 CMDLINE_TOOLS := xdp_iphash_to_cpu_cmdline
 
