@@ -68,9 +68,9 @@ COMMON_USER_OBJ: common_user.c common_user.h
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 # Define dependencies to other files
-xdp_iphash_to_cpu_kern.o:  xdp_iphash_to_cpu_common.h
-xdp_iphash_to_cpu_cmdline: xdp_iphash_to_cpu_common.h
-xdp_iphash_to_cpu:         xdp_iphash_to_cpu_common.h
+#xdp_iphash_to_cpu_kern.o:  xdp_iphash_to_cpu_common.h
+#xdp_iphash_to_cpu_cmdline: xdp_iphash_to_cpu_common.h
+#xdp_iphash_to_cpu:         xdp_iphash_to_cpu_common.h
 
 $(TARGET): %: %_user.c $(OBJECT_LIBBPF) Makefile $(COMMON_USER_OBJ)
 	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(COMMON_USER_OBJ) \

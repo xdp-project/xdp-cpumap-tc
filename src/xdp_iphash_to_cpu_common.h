@@ -1,4 +1,0 @@
-#ifndef __XDP_IPHASH_TO_CPU_USER_COMMON_H
-#define __XDP_IPHASH_TO_CPU_USER_COMMON_H
-
-#endif

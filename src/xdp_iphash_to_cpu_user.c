@@ -38,7 +38,6 @@ static const char *__doc__=
 
 #include "common_user.h"
 #include "common_kern_user.h"
-#include "xdp_iphash_to_cpu_common.h"
 
 /* Interface direction WARNING - sync with _user.c */
 #define INTERFACE_WAN      (1 << 0)

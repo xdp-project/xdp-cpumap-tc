@@ -28,7 +28,6 @@ static const char *__doc__=
 
 #include "common_user.h"
 #include "common_kern_user.h"
-#include "xdp_iphash_to_cpu_common.h"
 
 static const struct option long_options[] = {
         {"help",        no_argument,            NULL, 'h' },
