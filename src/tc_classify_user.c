@@ -26,6 +26,9 @@ static const char *__doc__=
 
 static int map_txq_config_fd = -1;
 
+const char *bpf_obj  = "tc_classify_kern.o";
+const char *sec_name = "tc_classify";
+
 static const struct option long_options[] = {
 	{"help",	no_argument,		NULL, 'h' },
 	{"base-setup",	no_argument,		NULL, 'b' },
@@ -186,9 +189,17 @@ int main(int argc, char **argv)
 	bool do_map_init = false;
 	bool do_list = false;
 	__s64 set_cpu = -1;
+	char filename[512];
 
 	/* Try opening txq_config map for CPU to queue_mapping */
 	map_txq_config_fd = open_bpf_map_file(mapfile_txq_config);
+
+	if (!locate_kern_object(argv[0], filename, sizeof(filename))) {
+		fprintf(stderr, "ERR: "
+			"cannot locate BPF _kern.o ELF file:%s errno(%d):%s\n",
+			filename, errno, strerror(errno));
+		return EXIT_FAIL_BPF_ELF;
+	}
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "hq",
@@ -248,8 +259,6 @@ int main(int argc, char **argv)
 
 	if (ifindex > 0 && !do_list) {
 		int err;
-		const char *filename = "tc_classify_kern.o";
-		const char *sec_name = "tc_classify";
 
 		if (verbose)
 			printf("Dev:%s -- Loading: TC-clsact egress\n", ifname);
