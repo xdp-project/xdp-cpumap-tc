@@ -1,5 +1,10 @@
 static const char *__doc__=
  "TC: Control program for tc_classid_kern.o\n"
+ "\n"
+ " - Loads on egress via --dev\n"
+ " - Config of map_txq_config, that control CPU to queue_mapping\n"
+ " - List current config via --list\n"
+ "\n"
  ;
 
 #include <errno.h>
