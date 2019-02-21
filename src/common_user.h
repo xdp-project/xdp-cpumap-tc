@@ -41,4 +41,9 @@ extern const char *mapfile_ifindex_type;
 int iphash_modify(int fd, char *ip_string, unsigned int action,
 		  __u32 cpu_idx, __u32 tc_handle);
 
+int tc_egress_attach_bpf(const char* dev, const char* bpf_obj,
+			 const char* sec_name);
+int tc_list_egress_filter(const char* dev);
+int tc_remove_egress_filter(const char* dev);;
+
 #endif /* __COMMON_USER_H */

@@ -1,6 +1,5 @@
 static const char *__doc__=
  "TC: Control program for tc_classid_kern.o\n"
- " (For now this just configure the BPF map: /sys/fs/bpf/tc/globals/map_txq_config)\n"
  ;
 
 #include <errno.h>
@@ -28,7 +27,8 @@ static const struct option long_options[] = {
 	{"quiet",	no_argument,		NULL, 'q' },
 	{"cpu",		required_argument,	NULL, 'c' },
 	{"queue-mapping",required_argument,	NULL, 'm' },
-	{"htb-major-hex",required_argument,	NULL, 'j' }, /* notice Hex base 16 */
+	{"htb-major-hex",required_argument,	NULL, 'j' }, /* Hex base 16 */
+	{"dev-egress"	,required_argument,	NULL, 'd' },
 	{0, 0, NULL,  0 }
 };
 
