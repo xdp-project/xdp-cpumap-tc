@@ -138,9 +138,11 @@ int  tc_cls_prog(struct __sk_buff *skb)
         if (!cfg)
                 return TC_ACT_SHOT;
 
-	skb->queue_mapping = cfg->queue_mapping;
-	if (cfg->queue_mapping == 0) {
-		bpf_debug("Misconfig: CPU:%u is not conf in map_txq_config?\n", cpu);
+	if (cfg->queue_mapping != 0) {
+		skb->queue_mapping = cfg->queue_mapping;
+	} else {
+		bpf_debug("Misconf: CPU:%u no conf (curr qm:%d)\n",
+			  cpu, skb->queue_mapping);
 	}
 
 	// TODO: Verify that the TC handle major number in
