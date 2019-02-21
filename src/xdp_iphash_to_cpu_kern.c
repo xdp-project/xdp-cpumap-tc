@@ -13,7 +13,7 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
-#include "common.h"
+#include "common_kern_user.h"
 
 #define u16 __u16
 #define u32 __u32

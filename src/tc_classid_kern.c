@@ -6,7 +6,7 @@
 #include <linux/if_ether.h>
 
 #include "bpf_endian.h"
-#include "common.h"
+#include "common_kern_user.h"
 
 #include "bpf_helpers.h"
 

@@ -64,9 +64,8 @@ static int xdp_unload(int ifindex_unload)
 			err, strerror(-err));
                 return EXIT_FAIL_XDP;
         }
+	return EXIT_OK;
 }
-
-
 
 int main(int argc, char **argv)
 {

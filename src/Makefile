@@ -24,6 +24,8 @@ CFLAGS ?= -I$(LIBBPF_DIR)/root/usr/include/
 CFLAGS += -I../headers/
 LDFLAGS ?= -L$(LIBBPF_DIR)
 
+COMMON_USER_OBJ := common_user.o
+
 # Watchout if using libbpf include files is a bad dependency
 # BAD: result in:
 #  error: unknown type name '__sum16'
@@ -62,18 +64,23 @@ $(OBJECT_LIBBPF):
 		mkdir -p root; DESTDIR=root $(MAKE) install_headers; \
 	fi
 
+COMMON_USER_OBJ: common_user.c common_user.h
+	$(CC) -c -o $@ $< $(CFLAGS)
+
 # Define dependencies to other files
 xdp_iphash_to_cpu_kern.o:  xdp_iphash_to_cpu_common.h
 xdp_iphash_to_cpu_cmdline: xdp_iphash_to_cpu_common.h
 xdp_iphash_to_cpu:         xdp_iphash_to_cpu_common.h
 
-$(TARGET): %: %_user.c $(OBJECT_LIBBPF) Makefile common.h
-	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
+$(TARGET): %: %_user.c $(OBJECT_LIBBPF) Makefile $(COMMON_USER_OBJ)
+	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(COMMON_USER_OBJ) \
+	 $< $(LIBS)
 
-$(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile common.h
-	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
+$(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile $(COMMON_USER_OBJ)
+	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(COMMON_USER_OBJ) \
+	 $< $(LIBS)
 
-$(XDP_OBJ): %.o: %.c  common.h
+$(XDP_OBJ): %.o: %.c  common_kern_user.h
 	$(CLANG) -S \
 	    -D __BPF_TRACING__ \
 	    $(CFLAGS) \

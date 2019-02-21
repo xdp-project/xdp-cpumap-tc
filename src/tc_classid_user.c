@@ -16,7 +16,8 @@ static const char *__doc__=
 #include <bpf/libbpf.h>
 #include <bpf_util.h>
 
-#include "common.h"
+#include "common_user.h"
+#include "common_kern_user.h"
 
 static int map_txq_config_fd = -1;
 static int verbose = 1;

@@ -36,7 +36,8 @@ static const char *__doc__=
 #include <bpf/libbpf.h>
 #include <bpf_util.h>
 
-#include "common.h"
+#include "common_user.h"
+#include "common_kern_user.h"
 #include "xdp_iphash_to_cpu_common.h"
 
 /* Interface direction WARNING - sync with _user.c */
