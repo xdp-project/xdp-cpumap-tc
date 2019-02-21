@@ -3,6 +3,8 @@
 #ifndef __COMMON_USER_H
 #define __COMMON_USER_H
 
+extern int verbose; /* common_user.c */
+
 /* Also see: #include "common_kern_user.h" */
 
 /* Exit return codes */
@@ -30,5 +32,12 @@ extern const char *mapfile_ip_hash;
  * Gotcha need to mount:
  *   mount -t bpf bpf /sys/fs/bpf/
  */
+
+/* iphash_modify operations */
+#define ACTION_ADD	(1 << 0)
+#define ACTION_DEL	(1 << 1)
+
+int iphash_modify(int fd, char *ip_string, unsigned int action,
+		  __u32 cpu_idx, __u32 tc_handle);
 
 #endif /* __COMMON_USER_H */

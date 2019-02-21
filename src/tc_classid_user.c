@@ -20,7 +20,6 @@ static const char *__doc__=
 #include "common_kern_user.h"
 
 static int map_txq_config_fd = -1;
-static int verbose = 1;
 
 static const struct option long_options[] = {
 	{"help",	no_argument,		NULL, 'h' },
