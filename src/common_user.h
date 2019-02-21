@@ -28,6 +28,7 @@ extern int verbose; /* common_user.c */
  */
 extern const char *mapfile_txq_config; /* located in common_user.c */
 extern const char *mapfile_ip_hash;
+extern const char *mapfile_ifindex_type;
 /*
  * Gotcha need to mount:
  *   mount -t bpf bpf /sys/fs/bpf/

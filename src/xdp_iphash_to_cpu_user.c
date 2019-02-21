@@ -107,6 +107,8 @@ static int find_map_fd_by_name(struct bpf_object *obj,
 
 	/* Prefer using libbpf function to find_fd_by_name */
 	map_fd = bpf_object__find_map_fd_by_name(obj, mapname);
+	if (map_fd > 0)
+		return map_fd;
 
 	/* If an old TC tool created and pinned map then it have no "name".
 	 * In that case use the FD that was returned when opening pinned file.
@@ -114,11 +116,13 @@ static int find_map_fd_by_name(struct bpf_object *obj,
 	for (i = 0; i < attr->nr_pinned_maps; i++) {
 		struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
 
+		printf("mapname: %s  pin->name:%s\n", mapname, pin_map->name);
 		if (strcmp(mapname, pin_map->name) != 0)
 				continue;
 
 		/* Matched, use FD stored in bpf_pinned_map */
 		map_fd = pin_map->map_fd;
+		printf("mapname: %s map_fd:%d\n", mapname, map_fd);
 	}
 	return map_fd;
 }
@@ -126,14 +130,19 @@ static int find_map_fd_by_name(struct bpf_object *obj,
 static int init_map_fds(struct bpf_object *obj,
 			struct bpf_prog_load_attr_maps *attr)
 {
-	cpu_map_fd            = find_map_fd_by_name(obj, "cpu_map", attr);
-	cpus_available_map_fd = find_map_fd_by_name(obj, "cpus_available",attr);
-	ifindex_type_map_fd   = find_map_fd_by_name(obj, "ifindex_type", attr);
-	ip_hash_map_fd        = find_map_fd_by_name(obj, "map_ip_hash", attr);
+	cpu_map_fd           = find_map_fd_by_name(obj,"cpu_map", attr);
+	cpus_available_map_fd= find_map_fd_by_name(obj,"cpus_available",attr);
+	ifindex_type_map_fd  = find_map_fd_by_name(obj,"map_ifindex_type",attr);
+	ip_hash_map_fd       = find_map_fd_by_name(obj,"map_ip_hash", attr);
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
-	    cpus_available_map_fd < 0 || ifindex_type_map_fd < 0)
+	    cpus_available_map_fd < 0 || ifindex_type_map_fd < 0) {
+		fprintf(stderr,
+			"FDs cpu_map:%d ip_hash:%d cpus_avail:%d ifindex:%d\n",
+			cpu_map_fd, ip_hash_map_fd,
+			cpus_available_map_fd, ifindex_type_map_fd);
 		return -ENOENT;
+	}
 
 	return 0;
 }
@@ -348,12 +357,12 @@ int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 		attr->pinned_maps[i].map_fd = -1;
 
 	bpf_map__for_each(map, obj) {
+		const char* mapname = bpf_map__name(map);
+
 #if 0 /* Use internal libbpf variables */
 		if (!bpf_map__is_offload_neutral(map))
 			map->map_ifindex = attr->ifindex;
 #endif
-		const char* mapname = bpf_map__name(map);
-
 		for (i = 0; i < attr->nr_pinned_maps; i++) {
 			struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
 			int fd;
@@ -415,6 +424,15 @@ int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 		}
 	}
 
+	/* Help user if requested map name that doesn't exist */
+	for (i = 0; i < attr->nr_pinned_maps; i++) {
+		struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
+
+		if (pin_map->map_fd < 0)
+			pr_warning("%s() requested mapname:%s not seen\n",
+				   __func__, pin_map->name);
+	}
+
 	*pobj = obj;
 	*prog_fd = bpf_program__fd(first_prog);
 	return 0;
@@ -446,13 +464,15 @@ int main(int argc, char **argv)
 	struct bpf_object *obj;
 	int prog_fd;
 
-	struct bpf_pinned_map my_pinned_maps[1];
+	struct bpf_pinned_map my_pinned_maps[2];
 	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
-		.nr_pinned_maps	= 1,
+		.nr_pinned_maps	= 2,
 	};
 	my_pinned_maps[0].name     = "map_ip_hash";
 	my_pinned_maps[0].filename = mapfile_ip_hash;
+	my_pinned_maps[1].name     = "map_ifindex_type";
+	my_pinned_maps[1].filename = mapfile_ifindex_type;
 
 	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 

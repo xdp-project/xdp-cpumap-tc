@@ -26,7 +26,7 @@ struct vlan_hdr {
 	__be16 h_vlan_encapsulated_proto;
 };
 
-/* Pinned shared map: see mapfile_ip_hash */
+/* Pinned shared map: see  mapfile_ip_hash */
 struct bpf_map_def SEC("maps") map_ip_hash = {
 	.type        = BPF_MAP_TYPE_HASH,
 	.key_size    = sizeof(u32),
@@ -34,8 +34,8 @@ struct bpf_map_def SEC("maps") map_ip_hash = {
 	.max_entries = IP_HASH_ENTRIES_MAX,
 };
 
-/* TODO: Pinned shared map */
-struct bpf_map_def SEC("maps") ifindex_type = {
+/* Pinned shared map: see  mapfile_ifindex_type */
+struct bpf_map_def SEC("maps") map_ifindex_type = {
 	.type        = BPF_MAP_TYPE_ARRAY,
 	.key_size    = sizeof(u32),
 	.value_size  = sizeof(u32),
@@ -142,7 +142,7 @@ u32 parse_ipv4(struct xdp_md *ctx, u64 l3_offset, u32 ifindex)
 		return XDP_PASS;
 	}
 	/* WAN or LAN interface? */
-	direction_lookup = bpf_map_lookup_elem(&ifindex_type, &ifindex);
+	direction_lookup = bpf_map_lookup_elem(&map_ifindex_type, &ifindex);
 	if (!direction_lookup)
 		return XDP_PASS;
 	direction = *direction_lookup;
