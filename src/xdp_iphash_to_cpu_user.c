@@ -455,15 +455,8 @@ int main(int argc, char **argv)
 	/* libbpf */
 	struct bpf_prog_info info = {};
 	__u32 info_len = sizeof(info);
-	struct bpf_program * bpf_prog;
 	struct bpf_object *obj;
-	struct bpf_map *map;
-	int pinned_file_fd;
 	int prog_fd;
-
-	struct bpf_object_open_attr prog_open_attr = {
-		.prog_type	= BPF_PROG_TYPE_XDP,
-	};
 
 	struct bpf_pinned_map my_pinned_maps[1];
 	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
@@ -600,63 +593,6 @@ int main(int argc, char **argv)
 		return EXIT_FAIL_BPF;
 	}
 
-#if 0
-	/*
-	 * Instead of using bpf_prog_load_xattr(), go through the
-	 * steps bpf_object__open + bpf_object__load and in-between,
-	 * load a pinned map file that the program should use
-	 */
-	obj = bpf_object__open_xattr(&prog_open_attr);
-	if (!obj) {
-		fprintf(stderr, "ERR: bpf_object__open_xattr: %s\n", strerror(errno));
-		return EXIT_FAIL_MAP_FILE;
-	}
-
-	map = bpf_object__find_map_by_name(obj, "map_ip_hash");
-	if (!map) {
-		fprintf(stderr, "ERR: cannot find map\n");
-		return EXIT_FAIL;
-	}
-
-	/* Reuse pinned map file, if available, else create pinned file */
-	pinned_file_fd = open_bpf_map(mapfile_ip_hash);
-	if (pinned_file_fd > 0) {
-		/* Use pinned_file_fd instead */
-		err = bpf_map__reuse_fd(map, pinned_file_fd);
-		fprintf(stderr, "INFO: using pinned ip_hash map: %s\n",
-			mapfile_ip_hash);
-	}
-
-	bpf_prog = bpf_program__next(NULL, obj);
-	if (!bpf_prog) {
-		fprintf(stderr, "ERR: cannot find first prog: %s\n", strerror(errno));
-		return EXIT_FAIL;
-	}
-	bpf_program__set_type(bpf_prog, prog_open_attr.prog_type);
-
-	err = bpf_object__load(obj);
-	if (err) {
-		fprintf(stderr, "ERR: bpf_object__load: %s\n", strerror(errno));
-		bpf_object__close(obj);
-		return -EINVAL;
-	}
-
-	prog_fd = bpf_program__fd(bpf_prog);
-	if (!prog_fd) {
-		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
-		return EXIT_FAIL;
-	}
-
-	if (pinned_file_fd < 0) {
-		/* No pinned file, lets pin the file */
-		fprintf(stderr, "INFO: pin ip_hash map: %s\n", mapfile_ip_hash);
-		err = bpf_map__pin(map, mapfile_ip_hash);
-		if (err) {
-			fprintf(stderr, "ERR: cannot pin: %s\n", strerror(errno));
-			return EXIT_FAIL;
-		}
-	}
-#endif
 	if (owner >= 0)
 		chown_maps(owner, group, mapfile_ip_hash);
 
