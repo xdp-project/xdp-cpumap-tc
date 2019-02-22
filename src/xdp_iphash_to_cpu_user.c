@@ -94,10 +94,14 @@ struct bpf_prog_load_attr_maps {
 	struct bpf_pinned_map *pinned_maps;
 };
 
-static int cpu_map_fd = -1;
+/* below: shared pinned maps */
 static int ip_hash_map_fd = -1;
-static int cpus_available_map_fd  = -1;
 static int ifindex_type_map_fd  = -1;
+static int txq_config_map_fd  = -1;
+
+/* below: private maps */
+static int cpu_map_fd = -1;
+static int cpus_available_map_fd  = -1;
 
 static int find_map_fd_by_name(struct bpf_object *obj,
 			       const char *mapname,
@@ -133,8 +137,9 @@ static int init_map_fds(struct bpf_object *obj,
 {
 	cpu_map_fd           = find_map_fd_by_name(obj,"cpu_map", attr);
 	cpus_available_map_fd= find_map_fd_by_name(obj,"cpus_available",attr);
-	ifindex_type_map_fd  = find_map_fd_by_name(obj,"map_ifindex_type",attr);
 	ip_hash_map_fd       = find_map_fd_by_name(obj,"map_ip_hash", attr);
+	ifindex_type_map_fd  = find_map_fd_by_name(obj,"map_ifindex_type",attr);
+	txq_config_map_fd    = find_map_fd_by_name(obj,"map_txq_config", attr);
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
 	    cpus_available_map_fd < 0 || ifindex_type_map_fd < 0) {
@@ -423,15 +428,17 @@ int main(int argc, char **argv)
 	struct bpf_object *obj;
 	int prog_fd;
 
-	struct bpf_pinned_map my_pinned_maps[2];
+	struct bpf_pinned_map my_pinned_maps[3];
 	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
-		.nr_pinned_maps	= 2,
+		.nr_pinned_maps	= 3,
 	};
 	my_pinned_maps[0].name     = "map_ip_hash";
 	my_pinned_maps[0].filename = mapfile_ip_hash;
 	my_pinned_maps[1].name     = "map_ifindex_type";
 	my_pinned_maps[1].filename = mapfile_ifindex_type;
+	my_pinned_maps[2].name     = "map_txq_config";
+	my_pinned_maps[2].filename = mapfile_txq_config;
 
 	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 
