@@ -172,6 +172,13 @@ bool map_txq_config_base_setup(int map_fd) {
 	__u32 cpu;
 	int err;
 
+	if (map_fd < 0) {
+		fprintf(stderr, "ERR: (bad map_fd:%d) "
+			"cannot proceed without access to txq_config map\n",
+			map_fd);
+		return false;
+	}
+
 	for (cpu = 0; cpu < possible_cpus; cpu++) {
 		txq_cfg.queue_mapping = cpu + 1;
 		txq_cfg.htb_major     = cpu + 1;

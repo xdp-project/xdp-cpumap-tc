@@ -224,7 +224,7 @@ int main(int argc, char **argv)
 		if (map_txq_config_fd < 0) {
 			fprintf(stderr,
 			"ERR: cannot proceed without access to config map\n");
-			return EXIT_FAIL;
+			return EXIT_FAIL_MAP;
 		}
 
 		if (!single_cpu_setup(map_txq_config_fd, set_cpu, txq_cfg,
