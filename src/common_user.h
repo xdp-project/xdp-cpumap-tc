@@ -46,6 +46,9 @@ bool locate_kern_object(char *execname, char *filename, size_t size);
 bool map_txq_config_list_setup(int map_fd);
 bool map_txq_config_base_setup (int map_fd);
 
+struct ip_hash_info; /* to use #include "common_kern_user.h" */
+bool map_txq_config_check_ip_info(int map_fd, struct ip_hash_info *ip_info);
+
 int tc_egress_attach_bpf(const char* dev, const char* bpf_obj,
 			 const char* sec_name);
 int tc_list_egress_filter(const char* dev);

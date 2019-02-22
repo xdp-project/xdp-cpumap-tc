@@ -6,6 +6,8 @@
 #include <libgen.h>      /* dirname */
 #include <arpa/inet.h>   /* inet_pton */
 
+#include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
+
 #include "common_user.h"
 #include "common_kern_user.h"
 
@@ -192,6 +194,54 @@ bool map_txq_config_base_setup(int map_fd) {
 		}
 	}
 
+	return true;
+}
+
+/* Check consistency between map_txq_config and ip_hash_info that is
+ * going to be inserted into ip_hash
+ */
+bool map_txq_config_check_ip_info(int map_fd, struct ip_hash_info *ip_info) {
+	struct txq_config txq_cfg;
+	__u16 ip_htb_major;
+	__u32 cpu;
+	int err;
+
+	if (map_fd < 0) {
+		fprintf(stderr, "ERR: (bad map_fd:%d) "
+			"cannot proceed without access to txq_config map\n",
+			map_fd);
+		return false;
+	}
+
+	cpu = ip_info->cpu;
+	err = bpf_map_lookup_elem(map_fd, &cpu, &txq_cfg);
+	if (err) {
+		fprintf(stderr,
+			"ERR: %s() lookup cpu-key:%d err(%d):%s\n",
+			__func__, cpu, errno, strerror(errno));
+		return false;
+	}
+
+	if (txq_cfg.queue_mapping == 0) {
+		fprintf(stderr, "WARN: "
+			"Looks like map_txq_config --base-setup is missing");
+		fprintf(stderr, "WARN: "
+			"Fixing, doing map_txq_config --base-setup");
+		if (!map_txq_config_base_setup(map_fd))
+			return false;
+		return true; // FIXME, redo check
+	}
+
+	ip_htb_major = TC_H_MAJ(ip_info->tc_handle) >> 16;
+	if (txq_cfg.htb_major != ip_htb_major) {
+		if (verbose)
+			printf("WARN: Bad config mismatch "
+			       "ip handle:0x%X (major:0x%X) "
+			       "not matching TXQ-config:0x%X\n",
+			       ip_info->tc_handle, ip_htb_major,
+			       txq_cfg.htb_major);
+		return false;
+	}
 	return true;
 }
 
