@@ -521,6 +521,7 @@ int main(int argc, char **argv)
 			break;
 		case 'a':
 			add_all_cpus = true;
+			break;
 		case 'c':
 			add_all_cpus = false;
 			add_cpu = strtoul(optarg, NULL, 0);
