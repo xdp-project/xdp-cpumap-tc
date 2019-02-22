@@ -1,9 +1,8 @@
 static const char *__doc__=
- "TC: Control program for tc_classid_kern.o\n"
- "\n"
- " - Loads on egress via --dev\n"
+ "TC: Control program for tc_classify_kern.o\n"
+ " - When using --dev, loads TC-egress filter calling BPF program\n"
  " - Config of map_txq_config, that control CPU to queue_mapping\n"
- " - List current config via --list\n"
+ " - List current queue_mapping (txq) config via --list\n"
  "\n"
  ;
 
@@ -16,7 +15,6 @@ static const char *__doc__=
 #include <linux/types.h>
 #include <getopt.h>
 #include <net/if.h>
-
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <bpf_util.h>
@@ -188,7 +186,7 @@ int main(int argc, char **argv)
 	}
 
 	if (verbose)
-		printf("%s Map name: %s\n", __doc__, mapfile_txq_config);
+		printf("%s Map filename: %s\n", __doc__, mapfile_txq_config);
 
 	if (ifindex > 0 && !do_list) {
 		int err;
