@@ -29,6 +29,9 @@ static const char *__doc__=
 #include "common_user.h"
 #include "common_kern_user.h"
 
+#define TC_H_MAJOR(x) TC_H_MAJ(x)
+#define TC_H_MINOR(x) TC_H_MIN(x)
+
 static const struct option long_options[] = {
         {"help",        no_argument,            NULL, 'h' },
         {"add",         no_argument,            NULL, 'a' },
@@ -73,7 +76,7 @@ static bool get_key32_value_ip_info(int fd, __u32 key, struct ip_hash_info *ip_i
 	return true;
 }
 
-static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info)
+static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info,int i)
 {
 	char ip_txt[INET_ADDRSTRLEN] = {0};
 
@@ -88,23 +91,28 @@ static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info)
 			"ERR: Cannot convert u32 IP:0x%X to IP-txt\n", ip);
 		exit(EXIT_FAIL_IP);
 	}
-	printf("\"%s\" : %u, tc_handle : 0x%X\n",
-	       ip_txt, ip_info->cpu, ip_info->tc_handle);
+	if (i > 0)
+		printf(",\n");
+	__u16 ip_info_major = (TC_H_MAJOR(ip_info->tc_handle) >> 16);
+	__u16 ip_info_minor = (TC_H_MINOR(ip_info->tc_handle));
+	printf("\"%s\" : { \"cpu\" : %u, \"tc_maj\" : \"%X\" , \"tc_min\" : \"%X\" }",
+	       ip_txt, ip_info->cpu, ip_info_major, ip_info_minor);
 }
 static void iphash_list_all_ipv4(int fd)
 {
 	__u32 key, *prev_key = NULL;
 	struct ip_hash_info ip_info;
 	int err;
-
+	int i = 0;
 	printf("{\n");
 	while ((err = bpf_map_get_next_key(fd, prev_key, &key)) == 0) {
 		if (!get_key32_value_ip_info(fd, key, &ip_info)) {
 			err = -1;
 			break;
 		}
-		iphash_print_ipv4(key, &ip_info);
+		iphash_print_ipv4(key, &ip_info, i);
 		prev_key = &key;
+		i++;
 	}
 	printf("}\n");
 	/* Make sure err was result of last key reached */
