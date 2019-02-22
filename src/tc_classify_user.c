@@ -215,6 +215,8 @@ int main(int argc, char **argv)
 	if (do_map_init) {
 		if (!map_txq_config_base_setup(map_txq_config_fd))
 			return EXIT_FAIL_MAP;
+		if (verbose)
+			map_txq_config_list_setup(map_txq_config_fd);
 	}
 
 	if (set_cpu >= 0 || set_queue_mapping || set_htb_major) {

@@ -184,8 +184,6 @@ bool map_txq_config_base_setup(int map_fd) {
 			return false;
 		}
 	}
-//	if (verbose)
-//		map_txq_config_list_setup(map_fd);
 
 	return true;
 }
