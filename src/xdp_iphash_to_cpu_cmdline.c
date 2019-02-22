@@ -120,7 +120,7 @@ static void iphash_clear_all_ipv4(int fd)
 
 	while (bpf_map_get_next_key(fd, prev_key, &key) == 0) {
                 inet_ntop(AF_INET, &key, ip_txt, sizeof(ip_txt));
-		iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0);
+		iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0, -1);
 		prev_key = &key;
 	}
 }
@@ -273,9 +273,12 @@ int main(int argc, char **argv) {
 		}
 
 		if (ip_string) {
+			int txq_fd = open_bpf_map(mapfile_txq_config);
 			fd = open_bpf_map(mapfile_ip_hash);
-			res = iphash_modify(fd, ip_string, action, cpu, tc_handle);
+			res = iphash_modify(fd, ip_string, action, cpu,
+					    tc_handle, txq_fd);
 			close(fd);
+			close(txq_fd);
 		}
 		return res;
 	}

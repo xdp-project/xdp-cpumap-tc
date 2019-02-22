@@ -55,9 +55,9 @@ bool map_txq_config_check_ip_info(int map_fd, struct ip_hash_info *ip_info) {
 
 	if (txq_cfg.queue_mapping == 0) {
 		fprintf(stderr, "WARN: "
-			"Looks like map_txq_config --base-setup is missing");
+			"Looks like map_txq_config --base-setup is missing\n");
 		fprintf(stderr, "WARN: "
-			"Fixing, doing map_txq_config --base-setup");
+			"Fixing, doing map_txq_config --base-setup\n");
 		if (!map_txq_config_base_setup(map_fd))
 			return false;
 		return true; // FIXME, redo check
@@ -66,18 +66,19 @@ bool map_txq_config_check_ip_info(int map_fd, struct ip_hash_info *ip_info) {
 	ip_htb_major = TC_H_MAJ(ip_info->tc_handle) >> 16;
 	if (txq_cfg.htb_major != ip_htb_major) {
 		if (verbose)
-			printf("WARN: Bad config mismatch "
-			       "ip handle:0x%X (major:0x%X) "
-			       "not matching TXQ-config:0x%X\n",
-			       ip_info->tc_handle, ip_htb_major,
-			       txq_cfg.htb_major);
+			fprintf(stderr,
+				"WARN: Bad config mismatch "
+				"ip handle:0x%X (major:0x%X) "
+				"not matching TXQ-config:0x%X\n",
+				ip_info->tc_handle, ip_htb_major,
+				txq_cfg.htb_major);
 		return false;
 	}
 	return true;
 }
 
 int iphash_modify(int fd, char *ip_string, unsigned int action,
-		  __u32 cpu_idx, __u32 tc_handle)
+		  __u32 cpu_idx, __u32 tc_handle, int txq_map_fd)
 {
 	//printf ("In iphash_modify %u\n",cpu_idx);
 	__u32 key;
@@ -106,6 +107,8 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 	printf ("key: 0x%X\n", key);
 	if (action == ACTION_ADD) {
 		//res = bpf_map_update_elem(fd, &key, &ip_info, BPF_NOEXIST);
+		if (!map_txq_config_check_ip_info(txq_map_fd, &ip_info))
+			fprintf(stderr, "Misconf: But allowing to continue\n");
 		res = bpf_map_update_elem(fd, &key, &ip_info, BPF_ANY);
 	} else if (action == ACTION_DEL) {
 		res = bpf_map_delete_elem(fd, &key);
