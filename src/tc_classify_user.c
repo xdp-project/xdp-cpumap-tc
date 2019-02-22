@@ -74,34 +74,6 @@ int open_bpf_map_file(const char *file)
 	return fd;
 }
 
-bool list_setup(int map_fd) {
-	unsigned int possible_cpus = bpf_num_possible_cpus();
-	struct txq_config txq_cfg;
-	int cpu, err;
-
-	printf("Current configuration:\n");
-	printf("|-----------+---------------+-----------|\n"
-	       "| key (cpu) | queue_mapping | htb_major |\n"
-	       "|-----------+---------------+-----------|\n");
-
-	for (cpu = 0; cpu < possible_cpus; cpu++) {
-
-		err = bpf_map_lookup_elem(map_fd, &cpu, &txq_cfg);
-		if (err) {
-			fprintf(stderr,
-				"ERR: %s() lookup cpu-key:%d err(%d):%s\n",
-				__func__, cpu, errno, strerror(errno));
-			return false;
-		}
-
-		printf("|    %-6u |        %-6u |  0x%-6X |\n",
-		       cpu, txq_cfg.queue_mapping, txq_cfg.htb_major);
-	}
-
-	printf("|-----------+---------------+-----------|\n");
-	return true;
-}
-
 bool single_cpu_setup(int map_fd, __s64 set_cpu, struct txq_config txq_cfg,
 		      bool set_queue_mapping, bool set_htb_major)
 {
@@ -132,7 +104,7 @@ bool single_cpu_setup(int map_fd, __s64 set_cpu, struct txq_config txq_cfg,
 	if (verbose) {
 		printf("Set CPU=%u to use queue_mapping=%u + htb_major=0x%X:\n",
 		       cpu, txq_cfg.queue_mapping, txq_cfg.htb_major);
-		list_setup(map_fd);
+		map_txq_config_list_setup(map_fd);
 	}
 	return true;
 }
@@ -241,7 +213,7 @@ int main(int argc, char **argv)
 	}
 
 	if (do_map_init) {
-		if (!base_setup_map_txq_config(map_txq_config_fd))
+		if (!map_txq_config_base_setup(map_txq_config_fd))
 			return EXIT_FAIL_MAP;
 	}
 
@@ -259,7 +231,7 @@ int main(int argc, char **argv)
 	}
 
 	if (do_list) {
-		if (!list_setup(map_txq_config_fd))
+		if (!map_txq_config_list_setup(map_txq_config_fd))
 			return EXIT_FAIL_MAP;
 
 		if (ifindex > 0)

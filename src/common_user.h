@@ -43,7 +43,8 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 
 bool locate_kern_object(char *execname, char *filename, size_t size);
 
-bool base_setup_map_txq_config(int map_fd);
+bool map_txq_config_list_setup(int map_fd);
+bool map_txq_config_base_setup (int map_fd);
 
 int tc_egress_attach_bpf(const char* dev, const char* bpf_obj,
 			 const char* sec_name);

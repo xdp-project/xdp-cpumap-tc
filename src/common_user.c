@@ -123,6 +123,34 @@ bool locate_kern_object(char *execname, char *filename, size_t size)
 	return false;
 }
 
+bool map_txq_config_list_setup(int map_fd) {
+	unsigned int possible_cpus = bpf_num_possible_cpus();
+	struct txq_config txq_cfg;
+	int cpu, err;
+
+	printf("Current configuration:\n");
+	printf("|-----------+---------------+-----------|\n"
+	       "| key (cpu) | queue_mapping | htb_major |\n"
+	       "|-----------+---------------+-----------|\n");
+
+	for (cpu = 0; cpu < possible_cpus; cpu++) {
+
+		err = bpf_map_lookup_elem(map_fd, &cpu, &txq_cfg);
+		if (err) {
+			fprintf(stderr,
+				"ERR: %s() lookup cpu-key:%d err(%d):%s\n",
+				__func__, cpu, errno, strerror(errno));
+			return false;
+		}
+
+		printf("|    %-6u |        %-6u |  0x%-6X |\n",
+		       cpu, txq_cfg.queue_mapping, txq_cfg.htb_major);
+	}
+
+	printf("|-----------+---------------+-----------|\n");
+	return true;
+}
+
 /*
 Create a simple default base setup for the "map_txq_config", where the
 queue_mapping is CPU + 1, and HTB qdisc have handles equal to
@@ -138,7 +166,7 @@ queue_mapping.
   |-----------+---------------+-----------|
 
  */
-bool base_setup_map_txq_config(int map_fd) {
+bool map_txq_config_base_setup(int map_fd) {
 	unsigned int possible_cpus = bpf_num_possible_cpus();
 	struct txq_config txq_cfg;
 	__u32 cpu;
@@ -157,7 +185,7 @@ bool base_setup_map_txq_config(int map_fd) {
 		}
 	}
 //	if (verbose)
-//		list_setup(map_fd);
+//		map_txq_config_list_setup(map_fd);
 
 	return true;
 }
