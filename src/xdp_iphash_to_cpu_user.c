@@ -450,9 +450,17 @@ int main(int argc, char **argv)
 	 */
 	qsize = 128+64;
 
+	/* Depend on sharing pinned maps */
+	if (bpf_fs_check_and_fix()) {
+		fprintf(stderr, "ERR: "
+			"Need access to bpf-fs(%s) for pinned maps "
+			"(%d): %s\n", BPF_DIR_MNT, errno, strerror(errno));
+		return EXIT_FAIL_MAP_FS;
+	}
+
 	if (!locate_kern_object(argv[0], filename, sizeof(filename))) {
-		fprintf(stderr,
-			"ERR: cannot locate BPF _kern.o ELF file:%s errno(%d):%s\n",
+		fprintf(stderr, "ERR: "
+			"cannot locate BPF _kern.o ELF file:%s errno(%d): %s\n",
 			filename, errno, strerror(errno));
 		return EXIT_FAIL;
 	}

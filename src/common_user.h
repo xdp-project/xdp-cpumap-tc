@@ -43,6 +43,10 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 
 bool locate_kern_object(char *execname, char *filename, size_t size);
 
+#define BPF_DIR_MNT	"/sys/fs/bpf"
+int bpf_fs_check();
+int bpf_fs_check_and_fix();
+
 bool map_txq_config_list_setup(int map_fd);
 bool map_txq_config_base_setup (int map_fd);
 

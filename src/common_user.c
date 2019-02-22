@@ -5,6 +5,9 @@
 #include <stdbool.h>     /* bool */
 #include <libgen.h>      /* dirname */
 #include <arpa/inet.h>   /* inet_pton */
+#include <sys/statfs.h>  /* statfs */
+#include <sys/stat.h>    /* stat(2) + S_IRWXU */
+#include <sys/mount.h>   /* mount(2) */
 
 #include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
 
@@ -124,6 +127,133 @@ bool locate_kern_object(char *execname, char *filename, size_t size)
 	free(basec);
 	return false;
 }
+
+#ifndef BPF_FS_MAGIC
+# define BPF_FS_MAGIC   0xcafe4a11
+#endif
+
+#define FILEMODE (S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)
+
+/* Verify BPF-filesystem is mounted on given file path */
+int __bpf_fs_check_path(const char *path)
+{
+	struct statfs st_fs;
+	char *dname, *dir;
+	int err = 0;
+
+	if (path == NULL)
+		return -EINVAL;
+
+	dname = strdup(path);
+	if (dname == NULL)
+		return -ENOMEM;
+
+	dir = dirname(dname);
+	if (statfs(dir, &st_fs)) {
+		fprintf(stderr, "ERR: failed to statfs %s: (%d)%s\n",
+			dir, errno, strerror(errno));
+		err = -errno;
+	}
+	free(dname);
+
+	if (!err && st_fs.f_type != BPF_FS_MAGIC) {
+		err = -EMEDIUMTYPE;
+	}
+
+	return err;
+}
+
+int bpf_fs_check()
+{
+	const char *path = BPF_DIR_MNT "/some_file";
+	int err;
+
+	err = __bpf_fs_check_path(path);
+
+	if (err == -EMEDIUMTYPE) {
+		fprintf(stderr,
+			"ERR: specified path %s is not on BPF FS\n\n"
+			" You need to mount the BPF filesystem type like:\n"
+			"  mount -t bpf bpf /sys/fs/bpf/\n\n",
+			path);
+	}
+	return err;
+}
+
+
+int __bpf_fs_subdir_check_and_fix(const char *dir)
+{
+	int err;
+
+	err = access(dir, F_OK);
+	if (err) {
+		if (errno == EACCES) {
+			fprintf(stderr,"ERR: "
+				"Got root? dir access %s fail: %s\n",
+				dir, strerror(errno));
+			return -1;
+		}
+		err = mkdir(dir, FILEMODE);
+		if (err) {
+			fprintf(stderr, "ERR: mkdir %s failed: %s\n",
+				dir, strerror(errno));
+				return -1;
+		}
+		// printf("DEBUG: mkdir %s\n", dir);
+	}
+
+	return err;
+}
+
+int bpf_fs_check_and_fix()
+{
+	const char *some_base_path = BPF_DIR_MNT "/some_file";
+	const char *dir_tc_globals = BPF_DIR_MNT "/tc/globals";
+	const char *dir_tc = BPF_DIR_MNT "/tc";
+	const char *target = BPF_DIR_MNT;
+	bool did_mkdir = false;
+	int err;
+
+	err = __bpf_fs_check_path(some_base_path);
+
+	if (err) {
+		/* First fix step: mkdir /sys/fs/bpf if dir not exist */
+		struct stat sb = {0};
+		int ret;
+
+		ret = stat(target, &sb);
+		if (ret) {
+			ret = mkdir(target, FILEMODE);
+			if (ret) {
+				fprintf(stderr, "mkdir %s failed: %s\n", target,
+					strerror(errno));
+				return ret;
+			}
+			did_mkdir = true;
+		}
+	}
+
+	if (err == -EMEDIUMTYPE || did_mkdir) {
+		/* Fix step 2: Mount bpf filesystem */
+		if (mount("bpf", target, "bpf", 0, "mode=0755")) {
+			fprintf(stderr, "ERR: mount -t bpf bpf %s failed: %s\n",
+				target,	strerror(errno));
+			return -1;
+		}
+	}
+
+	/* Fix step 3: Check sub-directories exists */
+	err = __bpf_fs_subdir_check_and_fix(dir_tc);
+	if (err)
+		return err;
+
+	err = __bpf_fs_subdir_check_and_fix(dir_tc_globals);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 
 bool map_txq_config_list_setup(int map_fd) {
 	unsigned int possible_cpus = bpf_num_possible_cpus();
