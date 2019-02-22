@@ -122,6 +122,14 @@ int main(int argc, char **argv)
 	__s64 set_cpu = -1;
 	char filename[512];
 
+	/* Depend on sharing pinned maps */
+	if (bpf_fs_check_and_fix()) {
+		fprintf(stderr, "ERR: "
+			"Need access to bpf-fs(%s) for pinned maps "
+			"(%d): %s\n", BPF_DIR_MNT, errno, strerror(errno));
+		return EXIT_FAIL_MAP_FS;
+	}
+
 	/* Try opening txq_config map for CPU to queue_mapping */
 	map_txq_config_fd = open_bpf_map_file(mapfile_txq_config);
 
