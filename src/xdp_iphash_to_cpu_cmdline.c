@@ -230,6 +230,11 @@ int main(int argc, char **argv) {
 			return EXIT_FAIL_OPTION;
 		}
 	}
+
+	if (bpf_fs_check()) {
+		return EXIT_FAIL_MAP_FS;
+	}
+
 	if (do_list) {
 		fd = open_bpf_map(mapfile_ip_hash);
 		iphash_list_all_ipv4(fd);
