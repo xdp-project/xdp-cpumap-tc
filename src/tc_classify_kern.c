@@ -198,6 +198,36 @@ __u32 get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type)
 	return ipv4;
 }
 
+/* Locahost generated traffic gets assigned a classid MINOR number */
+#define DEFAULT_LOCALHOST_MINOR 0x0003
+/*
+ * Localhost generated traffic, goes into another default qdisc, but
+ * need fixup of class MAJOR number to match CPU.
+ */
+static __always_inline
+__u32 localhost_default_classid(struct __sk_buff *skb,
+				struct txq_config *txq_cfg)
+{
+	__u32 cpu_major;
+
+	if (!txq_cfg)
+		return TC_ACT_SHOT;
+
+	cpu_major = txq_cfg->htb_major << 16;
+
+	if (skb->priority == 0) {
+		skb->priority = cpu_major | DEFAULT_LOCALHOST_MINOR;
+	} else {
+		/* The classid (via skb->priority) is already set, we
+		 * allow this, but update major number (assigned to CPU)
+		 */
+		__u32 curr_minor = TC_H_MINOR(skb->priority);
+
+		skb->priority = cpu_major | curr_minor;
+	}
+	return TC_ACT_OK;
+}
+
 /* Quick manual reload command:
  tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
  */
@@ -228,6 +258,11 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	} else {
 		bpf_debug("Misconf: CPU:%u no conf (curr qm:%d)\n",
 			  cpu, skb->queue_mapping);
+	}
+
+	/* Localhost generated traffic, goes into another default qdisc */
+	if (skb->ingress_ifindex == 0) {
+		return localhost_default_classid(skb, txq_cfg);
 	}
 
 	/* Ethernet header parsing: The protocol is already known via
@@ -263,7 +298,7 @@ int  tc_cls_prog(struct __sk_buff *skb)
 		return TC_ACT_OK;
 	}
 
-	// Just use map_ip_hash for something
+	/* Lookup IPv4 in map_ip_hash */
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
 	if (!ip_info) {
 		bpf_debug("Misconf: FAILED lookup IP:%x ingress_ifindex:%d prio:%x\n",
