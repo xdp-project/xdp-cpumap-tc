@@ -240,8 +240,6 @@ int  tc_cls_prog(struct __sk_buff *skb)
 			  l3_offset, eth_proto);
 		return TC_ACT_OK; /* Skip */
 	}
-	bpf_debug("Reached L3: L3off:%llu proto:0x%x skb_proto:0x%x\n",
-		  l3_offset, eth_proto, skb->protocol);
 
 	/* Get interface "direction" via map_ifindex_type */
 	ifindex = skb->ifindex;
@@ -293,8 +291,8 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	if (ip_info->tc_handle != 0)
 		skb->priority = ip_info->tc_handle;
 
-	bpf_debug("Lookup IP:%x prio:0x%x tc_handle:0x%x\n",
-		  ipv4, skb->priority, ip_info->tc_handle);
+	//bpf_debug("Lookup IP:%x prio:0x%x tc_handle:0x%x\n",
+	//	  ipv4, skb->priority, ip_info->tc_handle);
 
 	//return TC_ACT_OK;
 	return action;
