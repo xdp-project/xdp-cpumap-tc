@@ -346,8 +346,9 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	/* Lookup IPv4 in map_ip_hash */
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
 	if (!ip_info) {
-		bpf_debug("Misconf: FAILED lookup IP:%x ingress_ifindex:%d prio:%x\n",
-			  ipv4, skb->ingress_ifindex, skb->priority);
+		bpf_debug("Misconf: FAILED lookup IP:0x%x ifindex:%d ingress:%d prio:%x\n",
+			  ipv4, skb->ifindex,
+			  skb->ingress_ifindex, skb->priority);
 		// TODO: Assign to some default classid?
 		return TC_ACT_OK;
 	}
