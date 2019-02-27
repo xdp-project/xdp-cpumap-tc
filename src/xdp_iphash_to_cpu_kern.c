@@ -156,6 +156,7 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 	} else if (direction == INTERFACE_LAN) {
 		ip = iph->saddr;
 	} else {
+		bpf_debug("Cant determin ifindex(%u) direction\n", ifindex);
 		return XDP_PASS;
 	}
 	// bpf_debug("Valid IPv4 packet: raw saddr:0x%x\n", ip);
