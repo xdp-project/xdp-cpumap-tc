@@ -158,7 +158,6 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 		bpf_debug("Cant determin ifindex(%u) direction\n", ifindex);
 		return XDP_PASS;
 	}
-	// bpf_debug("Valid IPv4 packet: raw saddr:0x%x\n", ip);
 
 	/* The CPUMAP type doesn't allow to bpf_map_lookup_elem (see
 	 * verifier.c check_map_func_compatibility()). Thus, maintain
@@ -167,7 +166,11 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
 	if (!ip_info) {
-		bpf_debug("cant find ip_info->cpu id for ip:%u\n", ip);
+		/* On LAN side (XDP-ingress) some uncategorized traffic are
+		 * expected, e.g. services like DHCP are running and IPs
+		 * contacting captive portal (which are not yet configured)
+		 */
+		// bpf_debug("cant find ip_info->cpu id for ip:%u\n", ip);
 		// 255.255.255.255 is for default traffic
 		ip = bpf_ntohl(0xFFFFFFFF);
 		ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
@@ -179,7 +182,8 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 	cpu_id = ip_info->cpu;
 //	bpf_debug("cpu_id %d ip:%u tc_handle:%u\n",
 //		  cpu_id, ip, ip_info->tc_handle);
-	cpu_lookup = bpf_map_lookup_elem(&cpus_available, &cpu_id);
+
+        cpu_lookup = bpf_map_lookup_elem(&cpus_available, &cpu_id);
 	if (!cpu_lookup) {
 		bpf_debug("cant find cpu_lookup\n");
 		return XDP_PASS;
@@ -210,7 +214,8 @@ __u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 	case ETH_P_ARP:  /* Let OS handle ARP */
 		/* Fall-through */
 	default:
-		bpf_debug("Not handling eth_proto:0x%x\n", eth_proto);
+		// ARP traffic is handled locally on RX CPU
+		// bpf_debug("Not handling eth_proto:0x%x\n", eth_proto);
 		return XDP_PASS;
 	}
 	return XDP_PASS;
