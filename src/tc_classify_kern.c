@@ -228,6 +228,46 @@ __u32 localhost_default_classid(struct __sk_buff *skb,
 	return TC_ACT_OK;
 }
 
+/* Special types of traffic exists.
+ *
+ * Like LAN-to-LAN or WAN-to-WAN traffic.  The LAN-to-LAN traffic can
+ * also be between different VLANS, thus it is not possible to
+ * identify this via comparing skb->ifindex and skb->ingress_ifindex.
+ *
+ * Instead allow other filters (e.g. iptables -t mangle -j CLASSIFY)
+ * to set the TC-handle/classid (in skb->priority) and match the
+ * special TC-minor classid here.
+ */
+#define SPECIAL_MINOR_CLASSID_LOW  3
+#define SPECIAL_MINOR_CLASSID_HIGH 9
+static __always_inline
+bool special_minor_classid(struct __sk_buff *skb,
+			   struct txq_config *txq_cfg)
+{
+	__u32 curr_minor;
+
+	if (!txq_cfg)
+		return false;
+
+	if (skb->priority == 0)
+		return false; /* no special pre-set classid */
+
+	curr_minor = TC_H_MINOR(skb->priority);
+
+	if (curr_minor >= SPECIAL_MINOR_CLASSID_LOW &&
+	    curr_minor <= SPECIAL_MINOR_CLASSID_HIGH) {
+		/* The classid (via skb->priority) was already set
+		 * with a special minor-classid, but update major
+		 * number assigned to this CPU
+		 */
+		__u32 cpu_major  = txq_cfg->htb_major << 16;
+
+		skb->priority = cpu_major | curr_minor;
+		return true;
+	}
+	return false;
+}
+
 /* Quick manual reload command:
  tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
  */
@@ -263,6 +303,11 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	/* Localhost generated traffic, goes into another default qdisc */
 	if (skb->ingress_ifindex == 0) {
 		return localhost_default_classid(skb, txq_cfg);
+	}
+
+	if (special_minor_classid(skb, txq_cfg)) {
+		/* SKB was pre-marked with special class id */
+		return TC_ACT_OK;
 	}
 
 	/* Ethernet header parsing: The protocol is already known via
