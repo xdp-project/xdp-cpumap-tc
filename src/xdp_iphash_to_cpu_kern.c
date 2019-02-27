@@ -91,7 +91,6 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 		return false;
 
 	eth_type = eth->h_proto;
-	bpf_debug("Debug: eth_type:0x%x\n", bpf_ntohs(eth_type));
 
 	/* Skip non 802.3 Ethertypes */
 	if (bpf_ntohs(eth_type) < ETH_P_802_3_MIN)
