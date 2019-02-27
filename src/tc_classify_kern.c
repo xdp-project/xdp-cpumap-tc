@@ -310,8 +310,8 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	if (ip_info->cpu != cpu) {
 		bpf_debug("Mismatch: Curr-CPU:%u but IP:%x wants CPU:%u\n",
 			  cpu, ipv4, ip_info->cpu);
-		bpf_debug("Mismatch: more-info ifindex:%d ingress:%d\n",
-			  skb->ifindex, skb->ingress_ifindex);
+		bpf_debug("Mismatch: more-info ifindex:%d ingress:%d skb->prio:%x\n",
+			  skb->ifindex, skb->ingress_ifindex, skb->priority);
 	}
 
 	/* Catch if TC handle major number mismatch, between CPU
