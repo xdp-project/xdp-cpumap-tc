@@ -158,8 +158,7 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 	} else {
 		return XDP_PASS;
 	}
-
-	bpf_debug("Valid IPv4 packet: raw saddr:0x%x\n", ip);
+	// bpf_debug("Valid IPv4 packet: raw saddr:0x%x\n", ip);
 
 	/* The CPUMAP type doesn't allow to bpf_map_lookup_elem (see
 	 * verifier.c check_map_func_compatibility()). Thus, maintain
@@ -178,8 +177,8 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 		}
 	}
 	cpu_id = ip_info->cpu;
-	bpf_debug("cpu_id %d ip:%u tc_handle:%u\n",
-		  cpu_id, ip, ip_info->tc_handle);
+//	bpf_debug("cpu_id %d ip:%u tc_handle:%u\n",
+//		  cpu_id, ip, ip_info->tc_handle);
 	cpu_lookup = bpf_map_lookup_elem(&cpus_available, &cpu_id);
 	if (!cpu_lookup) {
 		bpf_debug("cant find cpu_lookup\n");
@@ -192,23 +191,20 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 		return XDP_PASS;
 	}
 
-	bpf_debug("Before redirect\n");
 	return bpf_redirect_map(&cpu_map, cpu_dest, 0);
-	bpf_debug("After redirect\n");
-	//return parse_port(ctx, iph->protocol, iph + 1);
 }
 
 static __always_inline
 __u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 			  __u32 ifindex)
 {
-	int test;
+	__u32 action;
+
 	switch (eth_proto) {
 	case ETH_P_IP:
-		//return parse_ipv4(ctx, l3_offset, ifindex);
-		test = parse_ipv4(ctx, l3_offset, ifindex);
-		bpf_debug("return from redirect %i\n",test);
-		return test;
+		action = parse_ipv4(ctx, l3_offset, ifindex);
+		//bpf_debug("return from redirect %i\n",test);
+		return action;
 		break;
 	case ETH_P_IPV6: /* Not handler for IPv6 yet*/
 	case ETH_P_ARP:  /* Let OS handle ARP */
@@ -236,7 +232,6 @@ int  xdp_program(struct xdp_md *ctx)
 			  l3_offset, eth_proto);
 		return XDP_PASS; /* Skip */
 	}
-	bpf_debug("Reached L3: L3off:%llu proto:0x%x\n", l3_offset, eth_proto);
 
 	action = handle_eth_protocol(ctx, eth_proto, l3_offset, ifindex);
 
