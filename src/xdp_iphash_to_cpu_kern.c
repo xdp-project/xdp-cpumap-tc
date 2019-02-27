@@ -159,11 +159,6 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 		return XDP_PASS;
 	}
 
-	/* The CPUMAP type doesn't allow to bpf_map_lookup_elem (see
-	 * verifier.c check_map_func_compatibility()). Thus, maintain
-	 * another map that says if a CPU is avail for redirect.
-	 */
-
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
 	if (!ip_info) {
 		/* On LAN side (XDP-ingress) some uncategorized traffic are
@@ -180,9 +175,11 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 		}
 	}
 	cpu_id = ip_info->cpu;
-//	bpf_debug("cpu_id %d ip:%u tc_handle:%u\n",
-//		  cpu_id, ip, ip_info->tc_handle);
 
+	/* The CPUMAP type doesn't allow to bpf_map_lookup_elem (see
+	 * verifier.c check_map_func_compatibility()). Thus, maintain
+	 * another map that says if a CPU is avail for redirect.
+	 */
         cpu_lookup = bpf_map_lookup_elem(&cpus_available, &cpu_id);
 	if (!cpu_lookup) {
 		bpf_debug("cant find cpu_lookup\n");
