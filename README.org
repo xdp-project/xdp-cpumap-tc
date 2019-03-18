@@ -1,5 +1,19 @@
+# -*- fill-column: 76; -*-
 #+Title: Project XDP cooperating with TC
+#+OPTIONS: ^:nil
 
 This project demonstrate how XDP cpumap redirect can be used together
 with Linux TC (Traffic Control) for solving the Qdisc locking problem.
 
+* Dependencies and alternatives
+
+Notice that the TC BPF-prog's ([[file:src/tc_classify_kern.c]] and
+[[file:src/tc_queue_mapping_kern.c]]) depends on a kernel feature that will first be
+avail in kernel v5.1, via [[https://github.com/torvalds/linux/commit/74e31ca850c1][kernel commit 74e31ca850c1]]. The alternative is to
+configure XPS for queue_mapping or use tc-skbedit(8) together with a TC-filter
+setup.
+
+The BPF-prog [[file:src/tc_classify_kern.c]] also setup the HTB-class id (via
+=skb->priority=), which have been supported for a long time, but due the above
+dependency (on =skb->queue_mapping=) it cannot be loaded. Alternative it is
+possible to use iptables CLASSIFY target module to change the HTB-class id.
