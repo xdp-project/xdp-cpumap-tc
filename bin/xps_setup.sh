@@ -51,7 +51,7 @@ function mask_to_cpus() {
 function list_xps_setup() {
     local txq=0
     local mqleaf=0
-    for xps_cpus in /sys/class/net/$DEV/queues/tx-*/xps_cpus; do
+    for xps_cpus in $(ls /sys/class/net/$DEV/queues/tx-*/xps_cpus | sort --field-separator='-' -k2n); do
 	let mqleaf++
 	mask=$(cat $xps_cpus)
 	value=$((0x$mask))
