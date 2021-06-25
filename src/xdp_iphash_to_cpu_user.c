@@ -54,6 +54,7 @@ static const struct option long_options[] = {
 	{"owner",	required_argument,	NULL, 'o' },
 	{"skb-mode",	no_argument,		NULL, 'S' },
 	{"all-cpus",	no_argument,		NULL, 'a' },
+	{"qsize",	required_argument,	NULL, 's' },
 	{0, 0, NULL,  0 }
 };
 
@@ -444,13 +445,23 @@ int main(int argc, char **argv)
 
 	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 
-	/* Notice: choosing the queue size is very important with the
-	 * ixgbe driver, because it's driver page recycling trick is
-	 * dependend on pages being returned quickly.  The number of
-	 * out-standing packets in the system must be less-than 2x
-	 * RX-ring size.
+	/* Notice: Choosing the queue size is very important when CPU is
+	 * configured with power-saving states.
+	 *
+	 * If deepest state take 133 usec to wakeup from (133/10^6). When link
+	 * speed is 10Gbit/s ((10*10^9/8) in bytes/sec). How many bytes can
+	 * arrive with in 133 usec at this speed: (10*10^9/8)*(133/10^6) =
+	 * 166250 bytes. With MTU size packets this is 110 packets, and with
+	 * minimum Ethernet (incl intergap overhead) 84 bytes is 1979 packets.
+	 *
+	 * Setting default cpumap queue to 2048 as worst-case (small packet)
+	 * should be +64 packet due kthread wakeup delay (due to xdp_do_flush)
+	 * worst-case is 2043 packets.
+	 *
+	 * Sysadm can configured system to avoid deep-sleep via:
+	 *   tuned-adm profile network-latency
 	 */
-	qsize = 128+64;
+	qsize = 2048;
 
 	/* Depend on sharing pinned maps */
 	if (bpf_fs_check_and_fix()) {
@@ -470,7 +481,7 @@ int main(int argc, char **argv)
 	prog_load_attr_maps.file = filename;
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hSrqdwlc:",
+	while ((opt = getopt_long(argc, argv, "hSrqdwlc:q:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':
@@ -531,6 +542,9 @@ int main(int argc, char **argv)
 			break;
 		case 'a':
 			add_all_cpus = true;
+			break;
+		case 's':
+			qsize = strtoul(optarg, NULL, 0);
 			break;
 		case 'c':
 			add_all_cpus = false;
