@@ -428,10 +428,10 @@ int main(int argc, char **argv)
 	struct bpf_object *obj;
 	int prog_fd;
 
-	struct bpf_pinned_map my_pinned_maps[3];
+	struct bpf_pinned_map my_pinned_maps[4];
 	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
-		.nr_pinned_maps	= 3,
+		.nr_pinned_maps	= 4,
 	};
 	my_pinned_maps[0].name     = "map_ip_hash";
 	my_pinned_maps[0].filename = mapfile_ip_hash;
@@ -439,6 +439,8 @@ int main(int argc, char **argv)
 	my_pinned_maps[1].filename = mapfile_ifindex_type;
 	my_pinned_maps[2].name     = "map_txq_config";
 	my_pinned_maps[2].filename = mapfile_txq_config;
+	my_pinned_maps[3].name     = "cpu_map";
+	my_pinned_maps[3].filename = mapfile_cpu_map;
 
 	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 
