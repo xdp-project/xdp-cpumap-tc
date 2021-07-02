@@ -164,7 +164,8 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 	/* map: cpu_map */
 	ret = bpf_map_update_elem(cpu_map_fd, &cpu, &queue_size, 0);
 	if (ret) {
-		fprintf(stderr, "Create CPU entry failed (err:%d)\n", ret);
+		fprintf(stderr, "Create CPU entry failed err(%d):%s\n",
+			errno, strerror(errno));
 		exit(EXIT_FAIL_BPF);
 	}
 
@@ -175,7 +176,8 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 	/* map = cpus_available */
 	ret = bpf_map_update_elem(cpus_available_map_fd, &cpu, &cpu, 0);
 	if (ret) {
-		fprintf(stderr, "Add to avail CPUs failed\n");
+		fprintf(stderr, "Add to avail CPUs failed err(%d):%s\n",
+			errno, strerror(errno));
 		exit(EXIT_FAIL_BPF);
 	}
 
