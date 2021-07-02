@@ -545,6 +545,11 @@ int main(int argc, char **argv)
 			break;
 		case 's':
 			qsize = strtoul(optarg, NULL, 0);
+			if (qsize == 0 || errno || (__s32)qsize < 0) {
+				fprintf(stderr, "ERR(%d): Invalid --qsize %d\n",
+					errno, qsize);
+				goto error;
+			}
 			break;
 		case 'c':
 			add_all_cpus = false;
