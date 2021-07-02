@@ -54,6 +54,7 @@ static const struct option long_options[] = {
 	{"owner",	required_argument,	NULL, 'o' },
 	{"skb-mode",	no_argument,		NULL, 'S' },
 	{"all-cpus",	no_argument,		NULL, 'a' },
+	{"qsize",	required_argument,	NULL, 's' },
 	{0, 0, NULL,  0 }
 };
 
@@ -163,7 +164,8 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 	/* map: cpu_map */
 	ret = bpf_map_update_elem(cpu_map_fd, &cpu, &queue_size, 0);
 	if (ret) {
-		fprintf(stderr, "Create CPU entry failed (err:%d)\n", ret);
+		fprintf(stderr, "Create CPU entry failed err(%d):%s\n",
+			errno, strerror(errno));
 		exit(EXIT_FAIL_BPF);
 	}
 
@@ -174,7 +176,8 @@ static int create_cpu_entry(__u32 cpu, __u32 queue_size)
 	/* map = cpus_available */
 	ret = bpf_map_update_elem(cpus_available_map_fd, &cpu, &cpu, 0);
 	if (ret) {
-		fprintf(stderr, "Add to avail CPUs failed\n");
+		fprintf(stderr, "Add to avail CPUs failed err(%d):%s\n",
+			errno, strerror(errno));
 		exit(EXIT_FAIL_BPF);
 	}
 
@@ -428,10 +431,10 @@ int main(int argc, char **argv)
 	struct bpf_object *obj;
 	int prog_fd;
 
-	struct bpf_pinned_map my_pinned_maps[3];
+	struct bpf_pinned_map my_pinned_maps[4];
 	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
-		.nr_pinned_maps	= 3,
+		.nr_pinned_maps	= 4,
 	};
 	my_pinned_maps[0].name     = "map_ip_hash";
 	my_pinned_maps[0].filename = mapfile_ip_hash;
@@ -439,16 +442,28 @@ int main(int argc, char **argv)
 	my_pinned_maps[1].filename = mapfile_ifindex_type;
 	my_pinned_maps[2].name     = "map_txq_config";
 	my_pinned_maps[2].filename = mapfile_txq_config;
+	my_pinned_maps[3].name     = "cpu_map";
+	my_pinned_maps[3].filename = mapfile_cpu_map;
 
 	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 
-	/* Notice: choosing the queue size is very important with the
-	 * ixgbe driver, because it's driver page recycling trick is
-	 * dependend on pages being returned quickly.  The number of
-	 * out-standing packets in the system must be less-than 2x
-	 * RX-ring size.
+	/* Notice: Choosing the queue size is very important when CPU is
+	 * configured with power-saving states.
+	 *
+	 * If deepest state take 133 usec to wakeup from (133/10^6). When link
+	 * speed is 10Gbit/s ((10*10^9/8) in bytes/sec). How many bytes can
+	 * arrive with in 133 usec at this speed: (10*10^9/8)*(133/10^6) =
+	 * 166250 bytes. With MTU size packets this is 110 packets, and with
+	 * minimum Ethernet (incl intergap overhead) 84 bytes is 1979 packets.
+	 *
+	 * Setting default cpumap queue to 2048 as worst-case (small packet)
+	 * should be +64 packet due kthread wakeup delay (due to xdp_do_flush)
+	 * worst-case is 2043 packets.
+	 *
+	 * Sysadm can configured system to avoid deep-sleep via:
+	 *   tuned-adm profile network-latency
 	 */
-	qsize = 128+64;
+	qsize = 2048;
 
 	/* Depend on sharing pinned maps */
 	if (bpf_fs_check_and_fix()) {
@@ -468,7 +483,7 @@ int main(int argc, char **argv)
 	prog_load_attr_maps.file = filename;
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hSrqdwlc:",
+	while ((opt = getopt_long(argc, argv, "hSrqdwlc:q:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':
@@ -529,6 +544,14 @@ int main(int argc, char **argv)
 			break;
 		case 'a':
 			add_all_cpus = true;
+			break;
+		case 's':
+			qsize = strtoul(optarg, NULL, 0);
+			if (qsize == 0 || errno || (__s32)qsize < 0) {
+				fprintf(stderr, "ERR(%d): Invalid --qsize %d\n",
+					errno, qsize);
+				goto error;
+			}
 			break;
 		case 'c':
 			add_all_cpus = false;

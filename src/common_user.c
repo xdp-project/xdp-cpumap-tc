@@ -27,6 +27,7 @@ int verbose = 1; /* extern in common_user.h */
 const char *mapfile_txq_config = BASEDIR_MAPS "/map_txq_config";
 const char *mapfile_ip_hash    = BASEDIR_MAPS "/map_ip_hash";
 const char *mapfile_ifindex_type = BASEDIR_MAPS "/map_ifindex_type";
+const char *mapfile_cpu_map      = BASEDIR_MAPS "/cpu_map";
 
 /* Check consistency between map_txq_config and ip_hash_info that is
  * going to be inserted into ip_hash
