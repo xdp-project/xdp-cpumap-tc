@@ -12,25 +12,22 @@ LLC ?= llc
 CLANG ?= clang
 CC := gcc
 
-LIBBPF_DIR = ../libbpf/src/
+LIBBPF_DIR = ../libbpf/src
+LIBBPF_INSTALL := libbpf-install
+LIBBPF_INSTDIR=../../$(LIBBPF_INSTALL)
+LIBBPF_INC ?= $(LIBBPF_DIR)/$(LIBBPF_INSTDIR)/usr/include/
 
 XDP_C = ${TARGET:=_kern.c} ${TC_TARGETS:=_kern.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 USER_C = ${TARGET:=_user.c}
 USER_OBJ = ${USER_C:.c=.o}
-OBJECT_LIBBPF = $(LIBBPF_DIR)/libbpf.a
+OBJECT_LIBBPF = $(LIBBPF_DIR)/libbpf.a $(LIBBPF_INSTDIR)
 
-CFLAGS ?= -I$(LIBBPF_DIR)/root/usr/include/
+CFLAGS += -I$(LIBBPF_INC)
 CFLAGS += -I../headers/
 LDFLAGS ?= -L$(LIBBPF_DIR)
 
 COMMON_USER_OBJ := common_user.o
-
-# Watchout if using libbpf include files is a bad dependency
-# BAD: result in:
-#  error: unknown type name '__sum16'
-#LIBBPF_INC = ../libbpf/include/
-#CFLAGS += -I$(LIBBPF_INC)
 
 LIBS = -lbpf -lelf
 
@@ -39,7 +36,8 @@ all: llvm-check $(TARGET) $(XDP_OBJ) $(CMDLINE_TOOLS)
 .PHONY: clean $(CLANG) $(LLC)
 
 clean:
-	cd $(LIBBPF_DIR) && $(MAKE) clean;
+	cd $(LIBBPF_DIR) && $(MAKE) clean
+	cd $(LIBBPF_DIR) && rm -r $(LIBBPF_INSTDIR)
 	rm -f $(TARGET)
 	rm -f $(XDP_OBJ)
 	rm -f $(USER_OBJ)
@@ -62,7 +60,7 @@ $(OBJECT_LIBBPF):
 		exit 1; \
 	else \
 		cd $(LIBBPF_DIR) && $(MAKE) all; \
-		mkdir -p root; DESTDIR=root $(MAKE) install_headers; \
+		DESTDIR=$(LIBBPF_INSTDIR) $(MAKE) install_headers; \
 	fi
 
 $(COMMON_USER_OBJ): common_user.c common_user.h
