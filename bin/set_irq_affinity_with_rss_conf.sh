@@ -20,6 +20,8 @@ export OUT=/tmp/ifup-set-irq-affinity-DEBUG
 DEBUG=$VERBOSITY
 DEBUG=1 #Force debugging on
 
+export CFG_FILE=/etc/smp_affinity_rss.conf
+
 function info() {
 	if [ -n "$DEBUG" -a "$DEBUG" -ne 0 ]; then
 		TS=`date +%Y%m%dT%H%M%S`
@@ -35,9 +37,10 @@ function warn() {
 
 function usage() {
 	echo
-	echo "Usage: $0 <iface> <cpu_list>"
-	echo " - Script for binding NIC interface IRQs to specific CPUs"
+	echo "Script for binding NIC interface IRQs to specific CPUs"
 	echo
+	echo "Usage: $0 <iface> <cpu_list>"
+	echo "  -i : (\$IFACE)   "
 }
 
 function get_iface_irqs()
@@ -69,19 +72,76 @@ function get_iface_irqs()
 	echo $irqs
 }
 
+function set_cpulist_iface()
+{
+	local _IFACE=$1
+	irq_list=$(get_iface_irqs $_IFACE)
 
+	for IRQ in $irq_list ; do
+		echo "IRQ: $IRQ"
+		smp_file="/proc/irq/${IRQ}/smp_affinity_list"
+		grep -H . $smp_file
+	done
+}
+
+info "Start set_irq_affinity"
+
+## --- Parse command line arguments / parameters ---
+while getopts "i:f:c:vh" option; do
+	case $option in
+		i) # interface IFACE can also come from ifup env or arg1
+			export IFACE=$OPTARG
+			info "NIC Interface device set to: IFACE=$IFACE"
+			;;
+		f)
+			export CFG_FILE=$OPTARG
+			info "Redefine config file to: CFG_FILE=$CFG_FILE"
+			;;
+		c)
+			export CPU_LIST2=$OPTARG
+			info "Defining CPU_LIST via command line: CPU_LIST=$CPU_LIST2"
+			;;
+		h|?|*)
+			usage;
+			info "ERROR: Unknown parameters!!!"
+			exit 0
+	esac
+done
+shift $(( $OPTIND - 1 ))
+
+## --- Load config file ---
+if [[ ! -e "$CFG_FILE" ]]; then
+	info "ERROR : Cannot read config file: $CFG_FILE"
+	#
+	# Allow to continue of CPU_LIST were defined on cmdline
+	if [[ -z "$CPU_LIST2" ]]; then
+		exit 0
+	fi
+else
+	source $CFG_FILE
+fi
+
+# Let cmdline CPU_LIST dominate over config file
+if [[ -n "$CPU_LIST2" ]]; then
+	export THE_CPU_LIST=$CPU_LIST2
+else
+	export THE_CPU_LIST=$CPU_LIST
+fi
+
+## --- The $IFACE variable must be resolved to continue ---
 if [[ -z "$IFACE" ]]; then
 	if [ -n "$1" ]; then
 		IFACE=$1
 		info "Setup NIC interface $IFACE (as arg1)"
 	else
 		usage
-		echo "Expected: To be called by the ifup scripts"
-		echo "    And expect environment variable \$IFACE is set"
+		echo
+		echo "  Supports: To be called by the ifup scripts"
+		echo "  - Then, expects environment variable \$IFACE is set"
+		info "ERROR : Cannot resolve \$IFACE"
 		exit 0
 	fi
 fi
-info "Start set_irq_affinity"
 
 if [[ ! -d /sys/class/net/$IFACE/ ]]; then
 	warn "Invalid interface $IFACE"
@@ -93,13 +153,15 @@ if [[ ! -d /sys/class/net/$IFACE/device ]]; then
 	exit 0
 fi
 
-irq_list=$(get_iface_irqs $IFACE)
+#irq_list=$(get_iface_irqs $IFACE)
+#
+#for IRQ in $irq_list ; do
+#	echo "IRQ: $IRQ"
+#	smp_file="/proc/irq/${IRQ}/smp_affinity_list"
+#	grep -H . $smp_file
+#done
 
-for IRQ in $irq_list ; do
-	echo "IRQ: $IRQ"
-	smp_file="/proc/irq/${IRQ}/smp_affinity_list"
-	grep -H . $smp_file
-done
+set_cpulist_iface $IFACE
 
 # TODO: Have (positive) NIC list that need this adjustment
 
