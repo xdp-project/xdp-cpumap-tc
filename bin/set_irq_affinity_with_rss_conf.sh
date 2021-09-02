@@ -33,18 +33,29 @@ function usage() {
 	echo
 }
 
+export TIME_FMT="%Y%m%dT%H%M%S"
+
 function info() {
 	if [ -n "$DEBUG" -a "$DEBUG" -ne 0 ]; then
-		TS=`date +%Y%m%dT%H%M%S`
+		TS=$(date +$TIME_FMT)
 		echo "$TS iface:$IFACE -- $@" >> $OUT
-		echo "$TS iface:$IFACE -- $@" >&2
+		# echo "$TS iface:$IFACE -- $@" >&2
 	fi
 }
 
 function warn() {
-	# echo "WARN : $@" >&2
-	info "WARN : $@"
+	TS=$(date +$TIME_FMT)
+	echo "$TS iface:$IFACE -- WARN : $@" >> $OUT
+	echo "$TS iface:$IFACE -- WARN : $@" >&2
 }
+
+function err() {
+	TS=$(date +$TIME_FMT)
+	echo "$TS iface:$IFACE -- ERROR : $@" >> $OUT
+	echo "$TS iface:$IFACE -- ERROR : $@" >&2
+	# Don't exit script, as it can cause ifup to not bringup interface
+}
+
 
 function get_iface_irqs()
 {
@@ -87,7 +98,7 @@ function set_cpulist_iface()
 		echo $_CPU_LIST > $smp_file
 		local status=$?
 		if [[ $status -ne 0 ]];then
-			warn "cannot conf IRQ:$IRQ ($smp_file) CPUs:$_CPU_LIST"
+			err "cannot conf IRQ:$IRQ ($smp_file) CPUs:$_CPU_LIST"
 		fi
 		# grep -H . $smp_file
 	done
@@ -103,7 +114,7 @@ function set_rss_indir_queues()
 		ethtool --set-rxfh-indir $IFACE equal $_QUEUES
 		local status=$?
 		if [[ $status -ne 0 ]];then
-			warn "cannot conf RSS indirection table with $_QUEUES"
+			err "cannot conf RSS indirection table with $_QUEUES"
 		fi
 	fi
 }
@@ -135,7 +146,7 @@ shift $(( $OPTIND - 1 ))
 
 ## --- Load config file ---
 if [[ ! -e "$CFG_FILE" ]]; then
-	info "ERROR : Cannot read config file: $CFG_FILE"
+	err "Cannot read config file: $CFG_FILE"
 	#
 	# Allow to continue of CPU_LIST were defined on cmdline
 	if [[ -z "$CPU_LIST2" ]]; then
@@ -161,7 +172,7 @@ if [[ -z "$IFACE" ]]; then
 		usage
 		echo "  Supports: To be called by the ifup scripts"
 		echo "  - Then, expects environment variable \$IFACE is set"
-		info "ERROR : Cannot resolve \$IFACE"
+		err "Cannot resolve \$IFACE"
 		exit 0
 	fi
 fi
