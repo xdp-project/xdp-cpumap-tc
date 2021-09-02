@@ -119,6 +119,20 @@ function set_rss_indir_queues()
 	fi
 }
 
+function disable_vlan_offload()
+{
+	local _IFACE=$1
+
+	if [[ -n "$DISABLE_VLAN_OFFLOAD_RX" ]]; then
+		info "Disable hardware VLAN offload for RX"
+		ethtool -K $_IFACE rxvlan off
+		local status=$?
+		if [[ $status -ne 0 ]];then
+			err "cannot disable RX VLAN offload"
+		fi
+	fi
+}
+
 info "Start set_irq_affinity"
 
 ## --- Parse command line arguments / parameters ---
@@ -192,3 +206,8 @@ set_cpulist_iface $IFACE $THE_CPU_LIST
 
 # --- Reduce/Setup RSS : RX flow hash indirection table ---
 set_rss_indir_queues $IFACE $RSS_INDIR_EQUAL_QUEUES
+
+# --- XDP cannot handle hardware offloaded VLAN info ---
+disable_vlan_offload $IFACE
+
+exit 0
