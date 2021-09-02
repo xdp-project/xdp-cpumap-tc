@@ -93,6 +93,21 @@ function set_cpulist_iface()
 	done
 }
 
+function set_rss_indir_queues()
+{
+	local _IFACE=$1
+	local _QUEUES=$2
+
+	if [[ -n "$_QUEUES" ]]; then
+		info "Change RSS table to use first $_QUEUES queues"
+		ethtool --set-rxfh-indir $IFACE equal $_QUEUES
+		local status=$?
+		if [[ $status -ne 0 ]];then
+			warn "cannot conf RSS indirection table with $_QUEUES"
+		fi
+	fi
+}
+
 info "Start set_irq_affinity"
 
 ## --- Parse command line arguments / parameters ---
@@ -164,3 +179,5 @@ fi
 # --- Do IRQ smp_affinity adjustments ---
 set_cpulist_iface $IFACE $THE_CPU_LIST
 
+# --- Reduce/Setup RSS : RX flow hash indirection table ---
+set_rss_indir_queues $IFACE $RSS_INDIR_EQUAL_QUEUES
