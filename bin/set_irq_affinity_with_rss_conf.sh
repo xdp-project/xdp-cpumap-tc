@@ -75,11 +75,17 @@ function get_iface_irqs()
 function set_cpulist_iface()
 {
 	local _IFACE=$1
+	local _CPU_LIST=$2
 	irq_list=$(get_iface_irqs $_IFACE)
 
 	for IRQ in $irq_list ; do
-		echo "IRQ: $IRQ"
+		info "NIC IRQ:$IRQ will be processed by CPUs: $_CPU_LIST"
 		smp_file="/proc/irq/${IRQ}/smp_affinity_list"
+		echo $_CPU_LIST > $smp_file
+		local status=$?
+		if [[ $status -ne 0 ]];then
+			warn "cannot conf IRQ:$IRQ ($smp_file) CPUs:$_CPU_LIST"
+		fi
 		grep -H . $smp_file
 	done
 }
@@ -161,7 +167,7 @@ fi
 #	grep -H . $smp_file
 #done
 
-set_cpulist_iface $IFACE
+set_cpulist_iface $IFACE $THE_CPU_LIST
 
 # TODO: Have (positive) NIC list that need this adjustment
 
