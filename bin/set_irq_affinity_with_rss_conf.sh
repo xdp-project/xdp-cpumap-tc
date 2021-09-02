@@ -22,6 +22,17 @@ DEBUG=1 #Force debugging on
 
 export CFG_FILE=/etc/smp_affinity_rss.conf
 
+function usage() {
+	echo
+	echo "Script for binding NIC interface IRQs to specific CPUs"
+	echo
+	echo " Usage: $0 <iface>"
+	echo "  -i : Cmdline set iface (default is env \$IFACE or shell arg1)"
+	echo "  -c : Cmdline override CPU_LIST from config file"
+	echo "  -f : Redefine config file to use (default $CFG_FILE)"
+	echo
+}
+
 function info() {
 	if [ -n "$DEBUG" -a "$DEBUG" -ne 0 ]; then
 		TS=`date +%Y%m%dT%H%M%S`
@@ -33,14 +44,6 @@ function info() {
 function warn() {
 	# echo "WARN : $@" >&2
 	info "WARN : $@"
-}
-
-function usage() {
-	echo
-	echo "Script for binding NIC interface IRQs to specific CPUs"
-	echo
-	echo "Usage: $0 <iface> <cpu_list>"
-	echo "  -i : (\$IFACE)   "
 }
 
 function get_iface_irqs()
@@ -86,7 +89,7 @@ function set_cpulist_iface()
 		if [[ $status -ne 0 ]];then
 			warn "cannot conf IRQ:$IRQ ($smp_file) CPUs:$_CPU_LIST"
 		fi
-		grep -H . $smp_file
+		# grep -H . $smp_file
 	done
 }
 
@@ -109,7 +112,7 @@ while getopts "i:f:c:vh" option; do
 			;;
 		h|?|*)
 			usage;
-			info "ERROR: Unknown parameters!!!"
+			warn "Unknown parameters!!!"
 			exit 0
 	esac
 done
@@ -141,7 +144,6 @@ if [[ -z "$IFACE" ]]; then
 		info "Setup NIC interface $IFACE (as arg1)"
 	else
 		usage
-		echo
 		echo "  Supports: To be called by the ifup scripts"
 		echo "  - Then, expects environment variable \$IFACE is set"
 		info "ERROR : Cannot resolve \$IFACE"
@@ -159,16 +161,6 @@ if [[ ! -d /sys/class/net/$IFACE/device ]]; then
 	exit 0
 fi
 
-#irq_list=$(get_iface_irqs $IFACE)
-#
-#for IRQ in $irq_list ; do
-#	echo "IRQ: $IRQ"
-#	smp_file="/proc/irq/${IRQ}/smp_affinity_list"
-#	grep -H . $smp_file
-#done
-
+# --- Do IRQ smp_affinity adjustments ---
 set_cpulist_iface $IFACE $THE_CPU_LIST
 
-# TODO: Have (positive) NIC list that need this adjustment
-
-echo END
