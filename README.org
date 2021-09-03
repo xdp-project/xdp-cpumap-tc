@@ -5,6 +5,16 @@
 This project demonstrate how XDP cpumap redirect can be used together
 with Linux TC (Traffic Control) for solving the Qdisc locking problem.
 
+* Disable XPS
+
+For this project to work disable XPS (Transmit Packet Steering).  A script for
+configuring and disabling XPS is provided here: [[file:bin/xps_setup.sh]].
+
+The reason is that XPS (Transmit Packet Steering) takes precedence over setting
+=skb->queue_mapping= used by TC BPF-prog.  XPS is configured per DEVICE via
+=/sys/class/net/DEVICE/queues/tx-*/xps_cpus= via a CPU hex mask.  To disable set
+mask=00.  More details see [[file:src/howto_debug.org]].
+
 * Scaling with XDP cpumap redirect
 
 We recommend reading this [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]] for details on how the XDP "[[https://github.com/torvalds/linux/blob/master/kernel/bpf/cpumap.c][cpumap]]"
