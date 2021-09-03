@@ -29,6 +29,7 @@ function usage() {
 	echo " Usage: $0 <iface>"
 	echo "  -i : Cmdline set iface (default is env \$IFACE or shell arg1)"
 	echo "  -c : Cmdline override CPU_LIST from config file"
+	echo "  -n : Cmdline override RSS_INDIR_EQUAL_QUEUES from config file"
 	echo "  -f : Redefine config file to use (default $CFG_FILE)"
 	echo
 }
@@ -136,7 +137,7 @@ function disable_vlan_offload()
 info "Start set_irq_affinity"
 
 ## --- Parse command line arguments / parameters ---
-while getopts "i:f:c:vh" option; do
+while getopts "i:f:c:n:vh" option; do
 	case $option in
 		i) # interface IFACE can also come from ifup env or arg1
 			export IFACE=$OPTARG
@@ -150,6 +151,11 @@ while getopts "i:f:c:vh" option; do
 			export CPU_LIST2=$OPTARG
 			info "Defining CPU_LIST via command line: CPU_LIST=$CPU_LIST2"
 			;;
+		n)
+			export RSS_INDIR_EQUAL_QUEUES2=$OPTARG
+			info "Defining RSS_INDIR_EQUAL_QUEUES via command line"
+			;;
+
 		h|?|*)
 			usage;
 			warn "Unknown parameters!!!"
@@ -175,6 +181,10 @@ if [[ -n "$CPU_LIST2" ]]; then
 	export THE_CPU_LIST=$CPU_LIST2
 else
 	export THE_CPU_LIST=$CPU_LIST
+fi
+
+if [[ -n "$RSS_INDIR_EQUAL_QUEUES2" ]]; then
+	export RSS_INDIR_EQUAL_QUEUES=$RSS_INDIR_EQUAL_QUEUES2
 fi
 
 ## --- The $IFACE variable must be resolved to continue ---
