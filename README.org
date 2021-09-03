@@ -5,7 +5,7 @@
 This project demonstrate how XDP cpumap redirect can be used together
 with Linux TC (Traffic Control) for solving the Qdisc locking problem.
 
-The focus is on use-case where global rate limiting it /not the goal/, but
+The focus is on use-case where global rate limiting is /not the goal/, but
 instead the *goal is to rate limit customers*, *services* or *containers*, to
 something significantly lower than NIC link speed.
 
@@ -14,6 +14,7 @@ The basic components (in TC MQ-setup [[file:bin/tc_mq_htb_setup_example.sh][exam
  - For each MQ *TXQ* assign an *independent HTB qdisc*.
  - Use XDP *cpumap* to redirect traffic to CPU with *associated HTB qdisc*
  - Use *TC BPF-prog* to assign *TXQ* (via =skb->queue_mapping=) and TC *major:minor* number.
+ - Configure *CPU* assignment to *RX-queues* (see [[file:bin/set_irq_affinity_with_rss_conf.sh][script]])
 
 * Disable XPS
 
