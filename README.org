@@ -5,11 +5,104 @@
 This project demonstrate how XDP cpumap redirect can be used together
 with Linux TC (Traffic Control) for solving the Qdisc locking problem.
 
+The focus is on use-case where global rate limiting is /not the goal/, but
+instead the *goal is to rate limit customers*, *services* or *containers*, to
+something significantly lower than NIC link speed.
+
+The basic components (in TC MQ-setup [[file:bin/tc_mq_htb_setup_example.sh][example script]]) are:
+ - Setup *MQ qdisc* which have multiple transmit queues (*TXQ*).
+ - For each MQ *TXQ* assign an *independent HTB qdisc*.
+ - Use XDP *cpumap* to redirect traffic to CPU with *associated HTB qdisc*
+ - Use *TC BPF-prog* to assign *TXQ* (via =skb->queue_mapping=) and TC *major:minor* number.
+ - Configure *CPU* assignment to *RX-queues* (see [[file:bin/set_irq_affinity_with_rss_conf.sh][script]])
+
+* Disable XPS
+
+For this project to work disable XPS (Transmit Packet Steering).  A script for
+configuring and disabling XPS is provided here: [[file:bin/xps_setup.sh]].
+
+The reason is that XPS (Transmit Packet Steering) takes precedence over setting
+=skb->queue_mapping= used by TC BPF-prog.  XPS is configured per DEVICE via
+=/sys/class/net/DEVICE/queues/tx-*/xps_cpus= via a CPU hex mask.  To disable set
+mask=00.  More details see [[file:src/howto_debug.org]].
+
+* Scaling with XDP cpumap redirect
+
+We recommend reading this [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]] for details on how the XDP "[[https://github.com/torvalds/linux/blob/master/kernel/bpf/cpumap.c][cpumap]]"
+redirect features works.  Basically XDP is a layer before the normal Linux
+kernel network stack (netstack).
+
+The XDP *cpumap* feature is a scalability and isolation mechanism, that
+allow separating this early XDP layer, from the rest of the netstack, and
+assigning dedicated CPUs for this stage.  An XDP program will essentially
+decide on what CPU the netstack start processing a given packet.
+
+** Assign CPUs to RX-queues
+
+Configuring what CPU receives RX-packets for a specific NIC RX-queue involves
+changing the contents of the =/proc/irq/= "smp_affinity" file for the specific
+IRQ number e.g.: =/proc/irq/N/smp_affinity_list=
+
+Looking up what IRQs a given NIC driver have assigned to a interface name, is a
+little tedious and can vary across NIC drivers (e.g. Mellanox naming in
+=/proc/interrupts= is non-standard). The most standardized method is looking in
+=/sys/class/net/$IFACE/device/msi_irqs=, but remember to filter IRQs not
+related to RX-queues, as some IRQs can be used by NIC for other things.
+
+This project contains a script to ease configuring this:
+[[file:bin/set_irq_affinity_with_rss_conf.sh]].
+
+The script default uses config file =/etc/smp_affinity_rss.conf= and an
+example config is available here: [[file:bin/smp_affinity_rss.conf]].
+
+** RX and TX queue scaling
+
+For this project it is recommended to assign dedicated CPUs to RX
+processing, which will run the XDP [[file:src/xdp_iphash_to_cpu_kern.c][program]]. This XDP-prog requires
+significantly less CPU-cycles per packet, than netstack and TX-qdisc
+handling.  Thus, the number of CPU cores needed for RX-processing is
+significantly less than the amount of CPU cores needed for netstack +
+TX-processing.
+
+It is most natural for the netstack + TX-qdisc processing CPU cores to be
+"assigned" to the lower CPU id's.  As most of the scripts and BPF-prog in
+this project assumes CPU core id's are mapped directly to the
+=queue_mapping= and MQ-leaf number (actually =smp_processor_id= plus one as
+qdisc have 1-indexed =queue_mapping=).  This is not a requirement, just a
+convention, as it depend on software configuration for how the XDP maps
+assign CPUs and what MQ-leafs qdisc are configured.
+
+** Config number of RX vs TX-queues
+
+This project basically scale less RX-queues to a larger number of TX-queues.
+Allowing to run a heavier Traffic Control shaping algorithm per netstack
+TX-queue, without any locking between the TX-queues via the MQ-qdisc as
+root-qdisc (and CPU-redirects).
+
+Configuring less RX-queues than TX-queues is often not possible on modern NIC
+hardware, as they often use what is called =combined= queues, which bind "RxTx"
+queues together. (See config via =ethtool --show-channels=).
+
+In our (less-RX-than-TX-CPUs) setup, this force us to configure multiple
+RX-queues to be handled by a single "RX" CPU.  This is not good for cross-CPU
+scaling, because packets will be spread across these multiple RX-queues, and the
+XDP (NAPI) processing can only generate packet-bulks per RX-queue, which
+decrease bulking opportunities into cpumap. (See why bulking improve cross-CPU
+scaling in [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap#appendix][blogpost]]).
+
+The *solution* is to adjust the NIC hardware RSS (Receive Side Scaling) or
+"RX-flow-hash" indirection table. (See config via =ethtool --show-rxfh-indir=).
+The trick is to adjusting RSS indirect table to only use the first N RX-queues
+via the command: =ethtool --set-rxfh-indir $IFACE equal N=.
+
+This features is also supported by the mention [[file:bin/set_irq_affinity_with_rss_conf.sh][config script]] via [[file:bin/smp_affinity_rss.conf][config]] variable
+=RSS_INDIR_EQUAL_QUEUES=.
+
 * Dependencies and alternatives
 
 Notice that the TC BPF-prog's ([[file:src/tc_classify_kern.c]] and
-[[file:src/tc_queue_mapping_kern.c]]) depends on a kernel feature that will first be
-avail in kernel v5.1, via [[https://github.com/torvalds/linux/commit/74e31ca850c1][kernel commit 74e31ca850c1]]. The alternative is to
+[[file:src/tc_queue_mapping_kern.c]]) depends on a kernel feature that are available
+since in kernel v5.1, via [[https://github.com/torvalds/linux/commit/74e31ca850c1][kernel commit 74e31ca850c1]]. The alternative is to
 configure XPS for queue_mapping or use tc-skbedit(8) together with a TC-filter
 setup.
 
