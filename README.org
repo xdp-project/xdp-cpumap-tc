@@ -11,9 +11,10 @@ I recommend reading this [[https://developers.redhat.com/blog/2021/05/13/receive
 redirect features works.  Basically XDP is a layer before the normal Linux
 kernel network stack (netstack).
 
-The XDP *cpumap* feature is a scalability and isolation mechanism,
-that allow separating this early XDP layer, from the rest of the netstack, and
-assigning dedicated CPUs for this stage.
+The XDP *cpumap* feature is a scalability and isolation mechanism, that
+allow separating this early XDP layer, from the rest of the netstack, and
+assigning dedicated CPUs for this stage.  An XDP program will essentially
+decide on what CPU the netstack start processing a given packet.
 
 ** Assign CPUs to RX-queues
 
@@ -32,6 +33,23 @@ This project contains a script to ease configuring this:
 
 The script default uses config file =/etc/smp_affinity_rss.conf= and an
 example config is available here: [[file:bin/smp_affinity_rss.conf]].
+
+** RX and TX queue scaling
+
+For this project it is recommended to assign dedicated CPUs to RX
+processing, which will run the XDP [[file:src/xdp_iphash_to_cpu_kern.c][program]]. This XDP-prog requires
+significantly less CPU-cycles per packet, than netstack and TX-qdisc
+handling.  Thus, the number of CPU cores needed for RX-processing is
+significantly less than the amount of CPU cores needed for netstack +
+TX-processing.
+
+It is most natural for the netstack + TX-qdisc processing CPU cores to be
+"assigned" to the lower CPU id's.  As most of the scripts and BPF-prog in
+this project assumes CPU core id's are mapped directly to the
+=queue_mapping= and MQ-leaf number (actually =smp_processor_id= plus one as
+qdisc have 1-indexed =queue_mapping=).  This is not a requirement, just a
+convention, as it depend on software configuration for how the XDP maps
+assign CPUs and what MQ-leafs qdisc are configured.
 
 
 * Dependencies and alternatives
