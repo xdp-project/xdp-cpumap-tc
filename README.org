@@ -16,6 +16,14 @@ The basic components (in TC MQ-setup [[file:bin/tc_mq_htb_setup_example.sh][exam
  - Use *TC BPF-prog* to assign *TXQ* (via =skb->queue_mapping=) and TC *major:minor* number.
  - Configure *CPU* assignment to *RX-queues* (see [[file:bin/set_irq_affinity_with_rss_conf.sh][script]])
 
+* Contents overview                                                     :TOC:
+- [[#disable-xps][Disable XPS]]
+- [[#scaling-with-xdp-cpumap-redirect][Scaling with XDP cpumap redirect]]
+  - [[#assign-cpus-to-rx-queues][Assign CPUs to RX-queues]]
+  - [[#rx-and-tx-queue-scaling][RX and TX queue scaling]]
+  - [[#config-number-of-rx-vs-tx-queues][Config number of RX vs TX-queues]]
+- [[#dependencies-and-alternatives][Dependencies and alternatives]]
+
 * Disable XPS
 
 For this project to work disable XPS (Transmit Packet Steering).  A script for
