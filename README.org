@@ -7,7 +7,7 @@ with Linux TC (Traffic Control) for solving the Qdisc locking problem.
 
 * Scaling with XDP cpumap redirect
 
-I recommend reading this [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]] for details on how the XDP "[[https://github.com/torvalds/linux/blob/master/kernel/bpf/cpumap.c][cpumap]]"
+We recommend reading this [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]] for details on how the XDP "[[https://github.com/torvalds/linux/blob/master/kernel/bpf/cpumap.c][cpumap]]"
 redirect features works.  Basically XDP is a layer before the normal Linux
 kernel network stack (netstack).
 
@@ -51,6 +51,31 @@ qdisc have 1-indexed =queue_mapping=).  This is not a requirement, just a
 convention, as it depend on software configuration for how the XDP maps
 assign CPUs and what MQ-leafs qdisc are configured.
 
+** Config number of RX vs TX-queues
+
+This project basically scale less RX-queues to a larger number of TX-queues.
+Allowing to run a heavier Traffic Control shaping algorithm per netstack
+TX-queue, without any locking between the TX-queues via the MQ-qdisc as
+root-qdisc (and CPU-redirects).
+
+Configuring less RX-queues than TX-queues is often not possible on modern NIC
+hardware, as they often use what is called =combined= queues, which bind "RxTx"
+queues together. (See config via =ethtool --show-channels=).
+
+In our (less-RX-than-TX-CPUs) setup, this force us to configure multiple
+RX-queues to be handled by a single "RX" CPU.  This is not good for cross-CPU
+scaling, because packets will be spread across these multiple RX-queues, and the
+XDP (NAPI) processing can only generate packet-bulks per RX-queue, which
+decrease bulking opportunities into cpumap. (See why bulking improve cross-CPU
+scaling in [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]]).
+
+The *solution* is to adjust the NIC hardware RSS (Receive Side Scaling) or
+"RX-flow-hash" indirection table. (See config via =ethtool --show-rxfh-indir=).
+The trick is to adjusting RSS indirect table to only use the first N RX-queues
+via the command: =ethtool --set-rxfh-indir $IFACE equal N=.
+
+This features is also supported by the mention [[file:bin/set_irq_affinity_with_rss_conf.sh][config script]] via [[file:bin/smp_affinity_rss.conf][config]] variable
+=RSS_INDIR_EQUAL_QUEUES=.
 
 * Dependencies and alternatives
 
