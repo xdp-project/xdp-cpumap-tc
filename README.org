@@ -5,6 +5,35 @@
 This project demonstrate how XDP cpumap redirect can be used together
 with Linux TC (Traffic Control) for solving the Qdisc locking problem.
 
+* Scaling with XDP cpumap redirect
+
+I recommend reading this [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]] for details on how the XDP "[[https://github.com/torvalds/linux/blob/master/kernel/bpf/cpumap.c][cpumap]]"
+redirect features works.  Basically XDP is a layer before the normal Linux
+kernel network stack (netstack).
+
+The XDP *cpumap* feature is a scalability and isolation mechanism,
+that allow separating this early XDP layer, from the rest of the netstack, and
+assigning dedicated CPUs for this stage.
+
+** Assign CPUs to RX-queues
+
+Configuring what CPU receives RX-packets for a specific NIC RX-queue involves
+changing the contents of the =/proc/irq/= "smp_affinity" file for the specific
+IRQ number e.g.: =/proc/irq/N/smp_affinity_list=
+
+Looking up what IRQs a given NIC driver have assigned to a interface name, is a
+little tedious and can vary across NIC drivers (e.g. Mellanox naming in
+=/proc/interrupts= is non-standard). The most standardized method is looking in
+=/sys/class/net/$IFACE/device/msi_irqs=, but remember to filter IRQs not
+related to RX-queues, as some IRQs can be used by NIC for other things.
+
+This project contains a script to ease configuring this:
+[[file:bin/set_irq_affinity_with_rss_conf.sh]].
+
+The script default uses config file =/etc/smp_affinity_rss.conf= and an
+example config is available here: [[file:bin/smp_affinity_rss.conf]].
+
+
 * Dependencies and alternatives
 
 Notice that the TC BPF-prog's ([[file:src/tc_classify_kern.c]] and
