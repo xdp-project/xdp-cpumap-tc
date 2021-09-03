@@ -67,7 +67,7 @@ RX-queues to be handled by a single "RX" CPU.  This is not good for cross-CPU
 scaling, because packets will be spread across these multiple RX-queues, and the
 XDP (NAPI) processing can only generate packet-bulks per RX-queue, which
 decrease bulking opportunities into cpumap. (See why bulking improve cross-CPU
-scaling in [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap][blogpost]]).
+scaling in [[https://developers.redhat.com/blog/2021/05/13/receive-side-scaling-rss-with-ebpf-and-cpumap#appendix][blogpost]]).
 
 The *solution* is to adjust the NIC hardware RSS (Receive Side Scaling) or
 "RX-flow-hash" indirection table. (See config via =ethtool --show-rxfh-indir=).
@@ -80,8 +80,8 @@ This features is also supported by the mention [[file:bin/set_irq_affinity_with_
 * Dependencies and alternatives
 
 Notice that the TC BPF-prog's ([[file:src/tc_classify_kern.c]] and
-[[file:src/tc_queue_mapping_kern.c]]) depends on a kernel feature that will first be
-avail in kernel v5.1, via [[https://github.com/torvalds/linux/commit/74e31ca850c1][kernel commit 74e31ca850c1]]. The alternative is to
+[[file:src/tc_queue_mapping_kern.c]]) depends on a kernel feature that are available
+since in kernel v5.1, via [[https://github.com/torvalds/linux/commit/74e31ca850c1][kernel commit 74e31ca850c1]]. The alternative is to
 configure XPS for queue_mapping or use tc-skbedit(8) together with a TC-filter
 setup.
 
