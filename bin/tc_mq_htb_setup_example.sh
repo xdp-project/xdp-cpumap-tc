@@ -52,8 +52,10 @@ info "Foreach TXQ - create HTB leaf(s) under MQ 0x7FFF:TXQ"
 i=0
 for dir in /sys/class/net/$DEV/queues/tx-*; do
     ((i++)) || true
+    # TC-handle major:minor numbers are in hex
+    hex=$(printf "%x" $i)
     # Qdisc HTB $i: under parent 7FFF:$i
-    call_tc qdisc add dev $DEV parent 7FFF:$i handle $i: htb default 2
+    call_tc qdisc add dev $DEV parent 7FFF:$hex handle $hex: htb default 2
     #    tc qdisc add dev $DEV parent 7FFF:1  handle 1:  htb default 2
     #    tc qdisc add dev $DEV parent 7FFF:2  handle 2:  htb default 2
     #    tc qdisc add dev $DEV parent 7FFF:3  handle 3:  htb default 2
@@ -66,28 +68,32 @@ info " - Also create HTB default class n:2"
 i=0
 for dir in /sys/class/net/$DEV/queues/tx-*; do
     ((i++)) || true
+
+    # TC-handle major:minor numbers are in hex
+    hex=$(printf "%x" $i)
+
     # The root-class set upper bandwidth usage
-    call_tc class add dev $DEV parent $i: classid $i:1 \
+    call_tc class add dev $DEV parent $hex: classid $hex:1 \
        htb rate $ROOT_RATE ceil $ROOT_CEIL
 
-    # Create HTB default class $i:2
-#    call_tc class add dev $DEV parent $i:1 classid $i:2 \
+    # Create HTB default class $hex:2
+#    call_tc class add dev $DEV parent $hex:1 classid $hex:2 \
 #      htb rate $DEF_RATE ceil $DEF_CEIL
     # - set default rate different, to measure which major-class we hit
-    call_tc class add dev $DEV parent $i:1 classid $i:2 \
+    call_tc class add dev $DEV parent $hex:1 classid $hex:2 \
 	    htb rate ${i}00Mbit ceil ${i}20Mbit
 
-    # Also change the qdisc on default HTB class $i:2 ?
-    # tc qdisc add dev $DEV parent $i:2 sfq
-    call_tc qdisc add dev $DEV parent $i:2 fq_codel
+    # Also change the qdisc on default HTB class $hex:2 ?
+    # tc qdisc add dev $DEV parent $hex:2 sfq
+    call_tc qdisc add dev $DEV parent $hex:2 fq_codel
 
     [[ -n "$VERBOSE" ]] && echo ""
 done
 
 info "Now create services/customers bandwidth limits"
 # Simple example:
-call_tc class add dev $DEV parent 2:1  classid 2:42 htb rate 2Mbit ceil 3Mbit
-call_tc qdisc add dev $DEV parent 2:42 sfq
+call_tc class add dev $DEV parent 2:1  classid 2:2a htb rate 2Mbit ceil 3Mbit
+call_tc qdisc add dev $DEV parent 2:2a sfq
 
 set -v
 #
