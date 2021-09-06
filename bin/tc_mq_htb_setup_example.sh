@@ -48,9 +48,17 @@ call_tc_allow_fail qdisc del dev $DEV root
 info " New MQ, with larger handle (MAJOR:) to allow HTB qdisc to use major 1:"
 call_tc qdisc replace dev $DEV root handle 7FFF: mq
 
+function sorted_tx_queues() {
+    # Returns numerically sorted TX queues
+    local queues=$(ls -d /sys/class/net/$DEV/queues/tx-* | sort --field-separator='-' -k2n)
+    echo $queues
+}
+
+export TX_QUEUES=$(sorted_tx_queues)
+
 info "Foreach TXQ - create HTB leaf(s) under MQ 0x7FFF:TXQ"
 i=0
-for dir in /sys/class/net/$DEV/queues/tx-*; do
+for dir in $TX_QUEUES; do
     ((i++)) || true
     # TC-handle major:minor numbers are in hex
     hex=$(printf "%x" $i)
@@ -66,7 +74,7 @@ done
 info "Create HTB root-class(es) n:1 (rate $ROOT_RATE ceil $ROOT_CEIL)"
 info " - Also create HTB default class n:2"
 i=0
-for dir in /sys/class/net/$DEV/queues/tx-*; do
+for dir in $TX_QUEUES; do
     ((i++)) || true
 
     # TC-handle major:minor numbers are in hex
