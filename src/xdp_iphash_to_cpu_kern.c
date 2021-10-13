@@ -6,7 +6,7 @@
 #include <linux/if_packet.h>
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
-#include <linux/in.h>
+#include <linux/in6.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
 
@@ -25,7 +25,7 @@ struct vlan_hdr {
 /* Pinned shared map: see  mapfile_ip_hash */
 struct bpf_map_def SEC("maps") map_ip_hash = {
 	.type        = BPF_MAP_TYPE_HASH,
-	.key_size    = sizeof(__u32),
+	.key_size    = sizeof(struct in6_addr),
 	.value_size  = sizeof(struct ip_hash_info),
 	.max_entries = IP_HASH_ENTRIES_MAX,
 };
@@ -132,12 +132,18 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 	struct iphdr *iph = data + l3_offset;
 	__u32 *direction_lookup;
 	__u32 direction;
-	__u32 ip; /* type need to match map */
 	struct ip_hash_info *ip_info;
 	//u32 *cpu_id_lookup;
 	__u32 cpu_id;
 	__u32 *cpu_lookup;
 	__u32 cpu_dest;
+
+	/* init to a v4-mapped IPv6 address - the last four octets will be
+	 * replaced by the v4 address in the IP header below
+	 */
+	struct in6_addr ip = {
+		.s6_addr16 = {0, 0, 0, 0, 0, 0xffff, 0, 0}
+	};
 
 	/* Hint: +1 is sizeof(struct iphdr) */
 	if (iph + 1 > data_end) {
@@ -151,9 +157,9 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 	direction = *direction_lookup;
 	/* Extract key, XDP operate at "ingress" */
 	if (direction == INTERFACE_WAN) {
-		ip = iph->daddr;
+		ip.s6_addr32[3] = iph->daddr;
 	} else if (direction == INTERFACE_LAN) {
-		ip = iph->saddr;
+		ip.s6_addr32[3] = iph->saddr;
 	} else {
 		bpf_debug("Cant determin ifindex(%u) direction\n", ifindex);
 		return XDP_PASS;
@@ -166,8 +172,8 @@ __u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
 		 * contacting captive portal (which are not yet configured)
 		 */
 		// bpf_debug("cant find ip_info->cpu id for ip:%u\n", ip);
-		// 255.255.255.255 is for default traffic
-		ip = bpf_ntohl(0xFFFFFFFF);
+		// the all-zeroes address is for default traffic
+		__builtin_memset(&ip, 0, sizeof(ip));
 		ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
 		if (!ip_info) {
 			bpf_debug("cant find default cpu_idx_lookup\n");
@@ -242,4 +248,3 @@ int  xdp_program(struct xdp_md *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
-

@@ -27,7 +27,7 @@ struct txq_config {
 #define IP_HASH_ENTRIES_MAX	32767
 /* Data structure used for map_ip_hash */
 struct ip_hash_info {
-	/* lookup key: __u32 IPv4-address */
+	/* lookup key: struct in6-addr IP address */
 	__u32 cpu;
 	__u32 tc_handle; /* TC handle MAJOR:MINOR combined in __u32 */
 };

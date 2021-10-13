@@ -8,6 +8,8 @@
 #include <sys/statfs.h>  /* statfs */
 #include <sys/stat.h>    /* stat(2) + S_IRWXU */
 #include <sys/mount.h>   /* mount(2) */
+#include <sys/socket.h>   /* mount(2) */
+#include <netdb.h>
 
 #include <linux/pkt_sched.h> /* TC_H_MAJ + TC_H_MIN */
 
@@ -82,7 +84,8 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 		  __u32 cpu_idx, __u32 tc_handle, int txq_map_fd)
 {
 	//printf ("In iphash_modify %u\n",cpu_idx);
-	__u32 key;
+	struct addrinfo hints = {}, *result;
+	struct in6_addr *key;
 	int res;
 	unsigned int nr_cpus = bpf_num_possible_cpus();
 	struct ip_hash_info ip_info;
@@ -94,25 +97,34 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 	ip_info.cpu       = cpu_idx;
 	ip_info.tc_handle = tc_handle;
 
+	hints.ai_family = AF_INET6;
+	hints.ai_flags = AI_NUMERICHOST | AI_V4MAPPED;
 	/* Convert IP-string into 32-bit network byte-order value */
-	res = inet_pton(AF_INET, ip_string, &key);
-	if (res <= 0) {
-		if (res == 0)
-			fprintf(stderr,
-				"ERR: IPv4 \"%s\" not in presentation format\n",
-				ip_string);
-		else
-			perror("inet_pton");
+	res = getaddrinfo(ip_string, NULL, &hints, &result);
+	if (res < 0) {
+		perror("getaddrinfo");
 		return EXIT_FAIL_IP;
 	}
-	printf ("key: 0x%X\n", key);
+	/* use the result with protocol == 0 */
+	while (result->ai_protocol && result->ai_next)
+		result = result->ai_next;
+
+	if (result->ai_addrlen != sizeof(struct sockaddr_in6)) {
+		fprintf(stderr, "ERR: invalid len %zu of addr return by getaddrinfo()\n",
+			result->ai_addrlen);
+		return EXIT_FAIL_IP;
+	}
+
+	key = &((struct sockaddr_in6 *)result->ai_addr)->sin6_addr;
+
+	printf ("key: 0x%X\n", key->s6_addr32[3]);
 	if (action == ACTION_ADD) {
 		//res = bpf_map_update_elem(fd, &key, &ip_info, BPF_NOEXIST);
 		if (!map_txq_config_check_ip_info(txq_map_fd, &ip_info))
 			fprintf(stderr, "Misconf: But allowing to continue\n");
-		res = bpf_map_update_elem(fd, &key, &ip_info, BPF_ANY);
+		res = bpf_map_update_elem(fd, key, &ip_info, BPF_ANY);
 	} else if (action == ACTION_DEL) {
-		res = bpf_map_delete_elem(fd, &key);
+		res = bpf_map_delete_elem(fd, key);
 	} else {
 		fprintf(stderr, "ERR: %s() invalid action 0x%x\n",
 			__func__, action);
@@ -122,7 +134,7 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 	if (res != 0) { /* 0 == success */
 		fprintf(stderr,
 			"%s() IP:%s key:0x%X errno(%d/%s)",
-			__func__, ip_string, key, errno, strerror(errno));
+			__func__, ip_string, key->s6_addr32[3], errno, strerror(errno));
 
 		if (errno == 17) {
 			fprintf(stderr, ": Already in Iphash\n");

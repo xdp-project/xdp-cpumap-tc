@@ -7,6 +7,7 @@
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
 #include <linux/in.h>
+#include <linux/in6.h>
 
 #include <stdbool.h>
 
@@ -48,7 +49,7 @@ struct bpf_elf_map {
 /* Map shared with XDP programs */
 struct bpf_elf_map SEC("maps") map_ip_hash = {
 	.type       = BPF_MAP_TYPE_HASH,
-	.size_key   = sizeof(__u32),
+	.size_key   = sizeof(struct in6_addr),
 	.size_value = sizeof(struct ip_hash_info),
 	.max_elem   = IP_HASH_ENTRIES_MAX,
         .pinning    = PIN_GLOBAL_NS, /* /sys/fs/bpf/tc/globals/map_ip_hash */
@@ -287,7 +288,9 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	struct ethhdr *eth = data;
 	__u16 eth_proto = 0;
 	__u32 l3_offset = 0;
-	__u32 ipv4 = bpf_ntohl(0xFFFFFFFF); /* default not found */
+	__u32 ipv4;
+
+	struct in6_addr ip = {}; /* default all-zeroes is not found */
 
 	txq_cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
         if (!txq_cfg)
@@ -333,6 +336,9 @@ int  tc_cls_prog(struct __sk_buff *skb)
 		ipv4 = get_ipv4_addr(skb, l3_offset, *ifindex_type);
 		if (!ipv4)
 			return TC_ACT_OK;
+		/* turn ip into a v4-mapped version of ipv4 */
+		ip.s6_addr16[5] = 0xffff;
+		ip.s6_addr32[3] = ipv4;
 		break;
 	case ETH_P_IPV6: /* No handler for IPv6 yet */
 	case ETH_P_ARP:  /* Let OS handle ARP */
@@ -344,7 +350,7 @@ int  tc_cls_prog(struct __sk_buff *skb)
 	}
 
 	/* Lookup IPv4 in map_ip_hash */
-	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
 	if (!ip_info) {
 		bpf_debug("Misconf: FAILED lookup IP:0x%x ifindex_ingress:%d prio:%x\n",
 			  ipv4, skb->ingress_ifindex, skb->priority);

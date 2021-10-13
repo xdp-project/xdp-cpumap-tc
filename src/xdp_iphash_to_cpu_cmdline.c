@@ -17,6 +17,7 @@ static const char *__doc__=
 #include <time.h>
 
 #include <arpa/inet.h>
+#include <netdb.h>
 
 /* libbpf.h defines bpf_* function helpers for syscalls,
  * indirectly via ./tools/lib/bpf/bpf.h */
@@ -65,20 +66,21 @@ static void usage(char *argv[])
 	printf("\n");
 }
 
-static bool get_key32_value_ip_info(int fd, __u32 key, struct ip_hash_info *ip_info)
+static bool get_key_value_ip_info(int fd, struct in6_addr *key, struct ip_hash_info *ip_info)
 {
-	if ((bpf_map_lookup_elem(fd, &key, ip_info)) != 0) {
+	if ((bpf_map_lookup_elem(fd, key, ip_info)) != 0) {
 		fprintf(stderr,
 			"ERR: bpf_map_lookup_elem failed key:%u errno(%d):%s\n",
-			key, errno, strerror(errno));
+			key->s6_addr32[3], errno, strerror(errno));
 		return false;
 	}
 	return true;
 }
 
-static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info,int i)
+static void iphash_print_ip(struct in6_addr *ip, struct ip_hash_info *ip_info,int i)
 {
-	char ip_txt[INET_ADDRSTRLEN] = {0};
+	char ip_txt[INET6_ADDRSTRLEN] = {0};
+	struct sockaddr_in6 addr = { .sin6_family = AF_INET6, .sin6_addr = *ip };
 
 	if (!ip_info) {
 		fprintf(stderr,	"ERR: %s() NULL pointer\n", __func__);
@@ -86,9 +88,12 @@ static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info,int i)
 	}
 
 	/* Convert IPv4 addresses from binary to text form */
-	if (!inet_ntop(AF_INET, &ip, ip_txt, sizeof(ip_txt))) {
+	if (getnameinfo((struct sockaddr *)&addr, sizeof(addr),
+			 ip_txt, sizeof(ip_txt),
+			 NULL, 0,
+			 NI_NUMERICHOST)) {
 		fprintf(stderr,
-			"ERR: Cannot convert u32 IP:0x%X to IP-txt\n", ip);
+			"ERR: Cannot convert u32 IP:0x%X to IP-txt\n", ip->s6_addr32[3]);
 		exit(EXIT_FAIL_IP);
 	}
 	if (i > 0)
@@ -100,17 +105,17 @@ static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info,int i)
 }
 static void iphash_list_all_ipv4(int fd)
 {
-	__u32 key, *prev_key = NULL;
+	struct in6_addr key, *prev_key = NULL;
 	struct ip_hash_info ip_info;
 	int err;
 	int i = 0;
 	printf("{\n");
 	while ((err = bpf_map_get_next_key(fd, prev_key, &key)) == 0) {
-		if (!get_key32_value_ip_info(fd, key, &ip_info)) {
+		if (!get_key_value_ip_info(fd, &key, &ip_info)) {
 			err = -1;
 			break;
 		}
-		iphash_print_ipv4(key, &ip_info, i);
+		iphash_print_ip(&key, &ip_info, i);
 		prev_key = &key;
 		i++;
 	}
@@ -123,11 +128,16 @@ static void iphash_list_all_ipv4(int fd)
 }
 static void iphash_clear_all_ipv4(int fd)
 {
-	char ip_txt[INET_ADDRSTRLEN] = {0};
-	__u32 key, *prev_key = NULL;
+	char ip_txt[INET6_ADDRSTRLEN] = {0};
+	struct in6_addr key, *prev_key = NULL;
 
 	while (bpf_map_get_next_key(fd, prev_key, &key) == 0) {
-                inet_ntop(AF_INET, &key, ip_txt, sizeof(ip_txt));
+		struct sockaddr_in6 addr = { .sin6_family = AF_INET6,
+					     .sin6_addr = key };
+		getnameinfo((struct sockaddr *)&addr, sizeof(addr),
+			    ip_txt, sizeof(ip_txt),
+			    NULL, 0,
+			    NI_NUMERICHOST);
 		iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0, -1);
 		prev_key = &key;
 	}
@@ -184,7 +194,7 @@ ok:
 
 
 int main(int argc, char **argv) {
-	#	define STR_MAX 42 /* For trivial input validation */
+	#define STR_MAX 100 /* For trivial input validation */
 	char _ip_string_buf[STR_MAX] = {};
 	char *ip_string = NULL;
 	unsigned int action = 0;
