@@ -85,7 +85,7 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 {
 	//printf ("In iphash_modify %u\n",cpu_idx);
 	struct addrinfo hints = {}, *result;
-	struct in6_addr *key;
+	struct in6_addr key;
 	int res;
 	unsigned int nr_cpus = bpf_num_possible_cpus();
 	struct ip_hash_info ip_info;
@@ -105,26 +105,25 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 		perror("getaddrinfo");
 		return EXIT_FAIL_IP;
 	}
-	/* use the result with protocol == 0 */
-	while (result->ai_protocol && result->ai_next)
-		result = result->ai_next;
 
 	if (result->ai_addrlen != sizeof(struct sockaddr_in6)) {
 		fprintf(stderr, "ERR: invalid len %zu of addr return by getaddrinfo()\n",
 			result->ai_addrlen);
+		freeaddrinfo(result);
 		return EXIT_FAIL_IP;
 	}
 
-	key = &((struct sockaddr_in6 *)result->ai_addr)->sin6_addr;
+	key = ((struct sockaddr_in6 *)result->ai_addr)->sin6_addr;
+	freeaddrinfo(result);
 
-	printf ("key: 0x%X\n", key->s6_addr32[3]);
+	printf ("key: 0x%X\n", key.s6_addr32[3]);
 	if (action == ACTION_ADD) {
 		//res = bpf_map_update_elem(fd, &key, &ip_info, BPF_NOEXIST);
 		if (!map_txq_config_check_ip_info(txq_map_fd, &ip_info))
 			fprintf(stderr, "Misconf: But allowing to continue\n");
-		res = bpf_map_update_elem(fd, key, &ip_info, BPF_ANY);
+		res = bpf_map_update_elem(fd, &key, &ip_info, BPF_ANY);
 	} else if (action == ACTION_DEL) {
-		res = bpf_map_delete_elem(fd, key);
+		res = bpf_map_delete_elem(fd, &key);
 	} else {
 		fprintf(stderr, "ERR: %s() invalid action 0x%x\n",
 			__func__, action);
@@ -134,7 +133,7 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 	if (res != 0) { /* 0 == success */
 		fprintf(stderr,
 			"%s() IP:%s key:0x%X errno(%d/%s)",
-			__func__, ip_string, key->s6_addr32[3], errno, strerror(errno));
+			__func__, ip_string, key.s6_addr32[3], errno, strerror(errno));
 
 		if (errno == 17) {
 			fprintf(stderr, ": Already in Iphash\n");
@@ -146,7 +145,7 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 	if (verbose)
 		fprintf(stderr,
 			"%s() IP:%s key:0x%X TC-handle:0x%X\n",
-			__func__, ip_string, key, tc_handle);
+			__func__, ip_string, key.s6_addr32[3], tc_handle);
 	return EXIT_OK;
 }
 
