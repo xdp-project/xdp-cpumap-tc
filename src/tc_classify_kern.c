@@ -6,6 +6,7 @@
 #include <linux/if_packet.h>
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
+#include <linux/ipv6.h>
 #include <linux/in.h>
 #include <linux/in6.h>
 
@@ -199,6 +200,36 @@ __u32 get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type)
 	return ipv4;
 }
 
+static __always_inline
+void get_ipv6_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type,
+		    struct in6_addr *dst)
+{
+	void *data_end = (void *)(long)skb->data_end;
+	void *data     = (void *)(long)skb->data;
+	struct ipv6hdr *ip6h = data + l3_offset;
+	struct in6_addr nulladdr = {};
+
+	if (ip6h + 1 > data_end) {
+		//bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
+		*dst = nulladdr;
+		return;
+	}
+
+	/* The IP-addr to match against depend on the "direction" of
+	 * the packet.  This TC hook runs at egress.
+	 */
+	switch (ifindex_type) {
+	case INTERFACE_WAN: /* Egress on WAN interface: match on src IP */
+		*dst = ip6h->saddr;
+		break;
+	case INTERFACE_LAN: /* Egress on LAN interface: match on dst IP */
+		*dst = ip6h->daddr;
+		break;
+	default:
+		*dst = nulladdr;
+	}
+}
+
 /* Locahost generated traffic gets assigned a classid MINOR number */
 #define DEFAULT_LOCALHOST_MINOR 0x0003
 /*
@@ -340,7 +371,9 @@ int  tc_cls_prog(struct __sk_buff *skb)
 		ip.s6_addr16[5] = 0xffff;
 		ip.s6_addr32[3] = ipv4;
 		break;
-	case ETH_P_IPV6: /* No handler for IPv6 yet */
+	case ETH_P_IPV6:
+		get_ipv6_addr(skb, l3_offset, *ifindex_type, &ip);
+		break;
 	case ETH_P_ARP:  /* Let OS handle ARP */
 		// TODO: Should we choose a special classid for these?
 		/* Fall-through */
