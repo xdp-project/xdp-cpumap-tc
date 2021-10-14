@@ -29,6 +29,11 @@ The basic components (in TC MQ-setup [[file:bin/tc_mq_htb_setup_example.sh][exam
 For this project to work disable XPS (Transmit Packet Steering).  A script for
 configuring and disabling XPS is provided here: [[file:bin/xps_setup.sh]].
 
+Script command line to disable XPS:
+#+begin_src sh
+sudo ./bin/xps_setup.sh --dev DEVICE --default --disable
+#+end_src
+
 The reason is that XPS (Transmit Packet Steering) takes precedence over setting
 =skb->queue_mapping= used by TC BPF-prog.  XPS is configured per DEVICE via
 =/sys/class/net/DEVICE/queues/tx-*/xps_cpus= via a CPU hex mask.  To disable set
