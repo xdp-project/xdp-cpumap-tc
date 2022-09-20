@@ -59,7 +59,7 @@ static int xdp_unload(int ifindex_unload)
 {
 	int err;
 
-	if ((err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags)) < 0) {
+	if ((err = bpf_xdp_attach(ifindex, -1, xdp_flags, NULL)) < 0) {
                 fprintf(stderr, "ERR: link set xdp unload failed (err=%d):%s\n",
 			err, strerror(-err));
                 return EXIT_FAIL_XDP;
@@ -76,10 +76,7 @@ int main(int argc, char **argv)
 	bool unload = false;
 	char filename[256];
 	int longindex = 0;
-
-	struct bpf_prog_load_attr prog_load_attr = {
-		.prog_type      = BPF_PROG_TYPE_XDP,
-	};
+        int ret = EXIT_FAIL;
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "FhSrmzd:s:a:",
@@ -129,30 +126,36 @@ int main(int argc, char **argv)
 		return xdp_unload(ifindex);
 
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
-        prog_load_attr.file = filename;
 
-	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
-		return EXIT_FAIL;
+        obj = bpf_object__open_file(filename, NULL);
+        if (!obj)
+                return EXIT_FAIL;
 
-	if (!prog_fd) {
+        if (bpf_object__load(obj)) {
 		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
-		return EXIT_FAIL;
-	}
+                goto out;
+        }
 
-	if ((err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags)) < 0) {
+        prog_fd = bpf_program__fd(bpf_object__find_program_by_name(obj, "xdp_prog"));
+	if ((err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL)) < 0) {
                 fprintf(stderr, "ERR: link set xdp fd failed (err=%d):%s\n",
 			err, strerror(-err));
-                return EXIT_FAIL_XDP;
+                ret = EXIT_FAIL_XDP;
+                goto out;
         }
 
 	err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_len);
 	if (err) {
 		fprintf(stderr, "ERR: can't get prog info - %s\n",
 			strerror(errno));
-		return err;
+		goto out;
 	}
 
 	printf("Success: Load XDP prog id=%d on device:%s ifindex:%d\n",
 	       info.id, ifname, ifindex);
-	return EXIT_OK;
+        ret = EXIT_OK;
+
+out:
+        bpf_object__close(obj);
+	return ret;
 }
