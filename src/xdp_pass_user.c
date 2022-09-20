@@ -59,7 +59,7 @@ static int xdp_unload(int ifindex_unload)
 {
 	int err;
 
-	if ((err = bpf_xdp_attach(ifindex, -1, xdp_flags, NULL)) < 0) {
+	if ((err = bpf_set_link_xdp_fd(ifindex, -1, xdp_flags)) < 0) {
                 fprintf(stderr, "ERR: link set xdp unload failed (err=%d):%s\n",
 			err, strerror(-err));
                 return EXIT_FAIL_XDP;
@@ -76,7 +76,10 @@ int main(int argc, char **argv)
 	bool unload = false;
 	char filename[256];
 	int longindex = 0;
-        int ret = EXIT_FAIL;
+
+	struct bpf_prog_load_attr prog_load_attr = {
+		.prog_type      = BPF_PROG_TYPE_XDP,
+	};
 
 	/* Parse commands line args */
 	while ((opt = getopt_long(argc, argv, "FhSrmzd:s:a:",
@@ -126,36 +129,30 @@ int main(int argc, char **argv)
 		return xdp_unload(ifindex);
 
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
+        prog_load_attr.file = filename;
 
-        obj = bpf_object__open_file(filename, NULL);
-        if (!obj)
-                return EXIT_FAIL;
+	if (bpf_prog_load_xattr(&prog_load_attr, &obj, &prog_fd))
+		return EXIT_FAIL;
 
-        if (bpf_object__load(obj)) {
+	if (!prog_fd) {
 		fprintf(stderr, "ERR: load_bpf_file: %s\n", strerror(errno));
-                goto out;
-        }
+		return EXIT_FAIL;
+	}
 
-        prog_fd = bpf_program__fd(bpf_object__find_program_by_name(obj, "xdp_prog"));
-	if ((err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL)) < 0) {
+	if ((err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags)) < 0) {
                 fprintf(stderr, "ERR: link set xdp fd failed (err=%d):%s\n",
 			err, strerror(-err));
-                ret = EXIT_FAIL_XDP;
-                goto out;
+                return EXIT_FAIL_XDP;
         }
 
 	err = bpf_obj_get_info_by_fd(prog_fd, &info, &info_len);
 	if (err) {
 		fprintf(stderr, "ERR: can't get prog info - %s\n",
 			strerror(errno));
-		goto out;
+		return err;
 	}
 
 	printf("Success: Load XDP prog id=%d on device:%s ifindex:%d\n",
 	       info.id, ifname, ifindex);
-        ret = EXIT_OK;
-
-out:
-        bpf_object__close(obj);
-	return ret;
+	return EXIT_OK;
 }

@@ -218,7 +218,7 @@ __u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 	return XDP_PASS;
 }
 
-SEC("xdp")
+SEC("xdp_prog")
 int  xdp_program(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
@@ -242,3 +242,4 @@ int  xdp_program(struct xdp_md *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
+
