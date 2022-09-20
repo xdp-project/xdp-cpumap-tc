@@ -29,7 +29,7 @@ LDFLAGS ?= -L$(LIBBPF_DIR)
 
 COMMON_USER_OBJ := common_user.o
 
-LIBS = -lbpf -lelf
+LIBS = -l:libbpf.a -lelf -lz
 
 all: llvm-check $(TARGET) $(XDP_OBJ) $(CMDLINE_TOOLS)
 
