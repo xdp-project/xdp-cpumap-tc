@@ -79,7 +79,7 @@ $(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile $(COMMON_USER_OBJ)
 	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(COMMON_USER_OBJ) \
 	 $< $(LIBS)
 
-$(XDP_OBJ): %.o: %.c  common_kern_user.h
+$(XDP_OBJ): %.o: %.c  common_kern_user.h shared_maps.h
 	$(CLANG) -S \
 	    -target bpf \
 	    -D __BPF_TRACING__ \

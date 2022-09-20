@@ -10,10 +10,22 @@
 
 #include <stdbool.h>
 
-#include "bpf_endian.h"
-#include "common_kern_user.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
-#include "bpf_helpers.h"
+#include "common_kern_user.h"
+#include "shared_maps.h"
+
+/* More dynamic: let create a map that contains the mapping table, to
+ * allow more dynamic configuration. (See common.h for struct txq_config)
+ */
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, MAX_CPUS);
+	__type(key, __u32);
+	__type(value, struct txq_config);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} map_txq_config SEC(".maps");
 
 /* Manuel setup:
 
@@ -43,35 +55,6 @@ struct bpf_elf_map {
         __u32 pinning;
 	__u32 inner_id;
 	__u32 inner_idx;
-};
-
-/* Map shared with XDP programs */
-struct bpf_elf_map SEC("maps") map_ip_hash = {
-	.type       = BPF_MAP_TYPE_HASH,
-	.size_key   = sizeof(__u32),
-	.size_value = sizeof(struct ip_hash_info),
-	.max_elem   = IP_HASH_ENTRIES_MAX,
-        .pinning    = PIN_GLOBAL_NS, /* /sys/fs/bpf/tc/globals/map_ip_hash */
-};
-
-/* More dynamic: let create a map that contains the mapping table, to
- * allow more dynamic configuration. (See common.h for struct txq_config)
- */
-struct bpf_elf_map SEC("maps") map_txq_config = {
-        .type	    = BPF_MAP_TYPE_ARRAY,
-        .size_key   = sizeof(__u32),
-        .size_value = sizeof(struct txq_config),
-        .pinning    = PIN_GLOBAL_NS,/* /sys/fs/bpf/tc/globals/map_txq_config */
-        .max_elem   = MAX_CPUS,
-};
-
-/* Map shared with XDP programs */
-struct bpf_elf_map SEC("maps") map_ifindex_type = {
-        .type	    = BPF_MAP_TYPE_ARRAY,
-        .size_key   = sizeof(__u32),
-        .size_value = sizeof(struct txq_config),
-        .pinning    = PIN_GLOBAL_NS,/* /sys/fs/bpf/tc/globals/map_ifindex_type*/
-        .max_elem   = MAX_IFINDEX,
 };
 
 /*
