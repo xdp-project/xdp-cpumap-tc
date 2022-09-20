@@ -451,7 +451,7 @@ int main(int argc, char **argv)
 	prog_load_attr_maps.file = filename;
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hSrqdwlc:q:",
+	while ((opt = getopt_long(argc, argv, "hSrqd:wlc:q:o:s:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':

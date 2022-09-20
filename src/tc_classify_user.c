@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hq",
+	while ((opt = getopt_long(argc, argv, "hqblc:m:j:d:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':
