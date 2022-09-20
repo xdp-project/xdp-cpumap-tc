@@ -81,6 +81,7 @@ $(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile $(COMMON_USER_OBJ)
 
 $(XDP_OBJ): %.o: %.c  common_kern_user.h
 	$(CLANG) -S \
+	    -target bpf \
 	    -D __BPF_TRACING__ \
 	    $(CFLAGS) \
 	    -Wall \
@@ -88,5 +89,5 @@ $(XDP_OBJ): %.o: %.c  common_kern_user.h
 	    -Wno-pointer-sign \
 	    -Wno-compare-distinct-pointer-types \
 	    -Werror \
-	    -O2 -emit-llvm -c -g $<
+	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}
