@@ -19,7 +19,7 @@
 
  tc qdisc  del dev ixgbe2 clsact # clears all
  tc qdisc  add dev ixgbe2 clsact
- tc filter add dev ixgbe2 egress bpf da obj tc_classify_kern.o sec tc_classify
+ tc filter add dev ixgbe2 egress bpf da obj tc_classify_kern.o sec tc
  tc filter list dev ixgbe2 egress
 
 */
@@ -269,7 +269,7 @@ bool special_minor_classid(struct __sk_buff *skb,
 }
 
 /* Quick manual reload command:
- tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
+ tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc
  */
 SEC("tc")
 int  tc_cls_prog(struct __sk_buff *skb)

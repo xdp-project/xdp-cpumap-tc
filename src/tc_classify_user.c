@@ -25,7 +25,7 @@ static const char *__doc__=
 static int map_txq_config_fd = -1;
 
 const char *bpf_obj  = "tc_classify_kern.o";
-const char *sec_name = "tc_classify";
+const char *sec_name = "tc";
 
 static const struct option long_options[] = {
 	{"help",	no_argument,		NULL, 'h' },
