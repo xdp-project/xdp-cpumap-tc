@@ -255,7 +255,7 @@ bool special_minor_classid(struct __sk_buff *skb,
  tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc
  */
 SEC("tc")
-int  tc_cls_prog(struct __sk_buff *skb)
+int tc_iphash_to_cpu(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
 	struct ip_hash_info *ip_info;

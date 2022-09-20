@@ -197,7 +197,7 @@ __u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 }
 
 SEC("xdp")
-int  xdp_program(struct xdp_md *ctx)
+int xdp_iphash_to_cpu(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
