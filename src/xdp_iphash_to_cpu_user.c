@@ -227,7 +227,7 @@ static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 			ifindex, ifname);
 	}
 	if (ifindex > -1) {
-		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+		bpf_xdp_attach(ifindex, -1, xdp_flags, NULL);
 		if (bpf_map_update_elem(ifindex_type_map_fd,
 					&ifindex, &dir, 0) < 0) {
 			fprintf(stderr, "ERR: Clear ifindex type failed \n");
@@ -268,13 +268,7 @@ static inline bool IS_ERR_OR_NULL(const void *ptr)
 int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 			     struct bpf_object **pobj, int *prog_fd)
 {
-	struct bpf_object_open_attr open_attr = {
-		.file		= attr->file,
-		.prog_type	= attr->prog_type,
-	};
 	struct bpf_program *prog, *first_prog = NULL;
-	enum bpf_attach_type expected_attach_type;
-	enum bpf_prog_type prog_type;
 	struct bpf_object *obj;
 	struct bpf_map *map;
 	int err;
@@ -286,50 +280,24 @@ int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 		return -EINVAL;
 
 
-	obj = bpf_object__open_xattr(&open_attr);
+	obj = bpf_object__open_file(attr->file, NULL);
 	if (IS_ERR_OR_NULL(obj))
 		return -ENOENT;
 
 	bpf_object__for_each_program(prog, obj) {
-		/*
-		 * If type is not specified, try to guess it based on
-		 * section name.
-		 */
-		prog_type = attr->prog_type;
-#if 0 /* Use internal libbpf variables */
-		prog->prog_ifindex = attr->ifindex;
-#endif
-		expected_attach_type = attr->expected_attach_type;
-#if 0 /* Use internal libbpf variables */
-		if (prog_type == BPF_PROG_TYPE_UNSPEC) {
-			err = bpf_program__identify_section(prog, &prog_type,
-							    &expected_attach_type);
-			if (err < 0) {
-				bpf_object__close(obj);
-				return -EINVAL;
-			}
-		}
-#endif
-
-		bpf_program__set_type(prog, prog_type);
-		bpf_program__set_expected_attach_type(prog,
-						      expected_attach_type);
-
-		if (!first_prog)
+		if (!first_prog) {
 			first_prog = prog;
+			break;
+		}
 	}
 
 	/* Reset attr->pinned_maps.map_fd to identify successful file load */
 	for (i = 0; i < attr->nr_pinned_maps; i++)
 		attr->pinned_maps[i].map_fd = -1;
 
-	bpf_map__for_each(map, obj) {
+	bpf_object__for_each_map(map, obj) {
 		const char* mapname = bpf_map__name(map);
 
-#if 0 /* Use internal libbpf variables */
-		if (!bpf_map__is_offload_neutral(map))
-			map->map_ifindex = attr->ifindex;
-#endif
 		for (i = 0; i < attr->nr_pinned_maps; i++) {
 			struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
 			int fd;
@@ -369,7 +337,7 @@ int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 	}
 
 	/* Pin the maps that were not loaded via pinned filename */
-	bpf_map__for_each(map, obj) {
+	bpf_object__for_each_map(map, obj) {
 		const char* mapname = bpf_map__name(map);
 
 		for (i = 0; i < attr->nr_pinned_maps; i++) {
@@ -618,7 +586,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERR: create ifindex direction type failed \n");
 		return (EXIT_FAIL_BPF);
 	}
-	if ((err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags)) < 0) {
+	if ((err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL)) < 0) {
 		fprintf(stderr, "ERR: link set xdp fd failed (err:%d)\n", err);
 		return EXIT_FAIL_XDP;
 	}
