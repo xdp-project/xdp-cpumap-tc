@@ -30,14 +30,6 @@ struct bpf_map_def SEC("maps") map_ip_hash = {
 	.max_entries = IP_HASH_ENTRIES_MAX,
 };
 
-/* Pinned shared map: see  mapfile_txq_config */
-struct bpf_map_def SEC("maps") map_txq_config = {
-	.type        = BPF_MAP_TYPE_ARRAY,
-	.key_size    = sizeof(__u32),
-	.value_size  = sizeof(struct txq_config),
-	.max_entries = MAX_CPUS,
-};
-
 /* Pinned shared map: see  mapfile_ifindex_type */
 struct bpf_map_def SEC("maps") map_ifindex_type = {
 	.type        = BPF_MAP_TYPE_ARRAY,
