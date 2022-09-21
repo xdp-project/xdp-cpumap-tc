@@ -31,10 +31,7 @@
 #define TC_H_MAJOR(x) TC_H_MAJ(x)
 #define TC_H_MINOR(x) TC_H_MIN(x)
 
-/* Quick replace/reload command:
- *  tc filter replace dev ixgbe2 egress prio 0xC000 handle 1 bpf da obj tc_queue_mapping_kern.o sec tc_qmap2cpu
- */
-SEC("tc_qmap2cpu")
+SEC("tc")
 int  tc_cls_prog(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
@@ -96,7 +93,7 @@ int  tc_cls_prog(struct __sk_buff *skb)
 
 #define barrier() __asm__ __volatile__("": : :"memory")
 
-SEC("tc_test_invalid_value")
+SEC("tc")
 int  tc_cls_prog_test(struct __sk_buff *skb)
 {
 	/* Kernel should not allow this to take effect */

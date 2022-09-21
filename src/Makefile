@@ -29,7 +29,7 @@ LDFLAGS ?= -L$(LIBBPF_DIR)
 
 COMMON_USER_OBJ := common_user.o
 
-LIBS = -lbpf -lelf
+LIBS = -l:libbpf.a -lelf -lz
 
 all: llvm-check $(TARGET) $(XDP_OBJ) $(CMDLINE_TOOLS)
 
@@ -79,8 +79,9 @@ $(CMDLINE_TOOLS): %: %.c $(OBJECT_LIBBPF) Makefile $(COMMON_USER_OBJ)
 	$(CC) -Wall $(CFLAGS) $(LDFLAGS) -o $@ $(COMMON_USER_OBJ) \
 	 $< $(LIBS)
 
-$(XDP_OBJ): %.o: %.c  common_kern_user.h
+$(XDP_OBJ): %.o: %.c  common_kern_user.h shared_maps.h
 	$(CLANG) -S \
+	    -target bpf \
 	    -D __BPF_TRACING__ \
 	    $(CFLAGS) \
 	    -Wall \
@@ -88,5 +89,5 @@ $(XDP_OBJ): %.o: %.c  common_kern_user.h
 	    -Wno-pointer-sign \
 	    -Wno-compare-distinct-pointer-types \
 	    -Werror \
-	    -O2 -emit-llvm -c -g $<
+	    -O2 -emit-llvm -c -g -o ${@:.o=.ll} $<
 	$(LLC) -march=bpf -filetype=obj -o $@ ${@:.o=.ll}

@@ -10,10 +10,11 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 
-#include "bpf_helpers.h"
-#include "bpf_endian.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 #include "common_kern_user.h"
+#include "shared_maps.h"
 
 #define DEBUG
 
@@ -22,44 +23,21 @@ struct vlan_hdr {
 	__be16 h_vlan_encapsulated_proto;
 };
 
-/* Pinned shared map: see  mapfile_ip_hash */
-struct bpf_map_def SEC("maps") map_ip_hash = {
-	.type        = BPF_MAP_TYPE_HASH,
-	.key_size    = sizeof(__u32),
-	.value_size  = sizeof(struct ip_hash_info),
-	.max_entries = IP_HASH_ENTRIES_MAX,
-};
-
-/* Pinned shared map: see  mapfile_txq_config */
-struct bpf_map_def SEC("maps") map_txq_config = {
-	.type        = BPF_MAP_TYPE_ARRAY,
-	.key_size    = sizeof(__u32),
-	.value_size  = sizeof(struct txq_config),
-	.max_entries = MAX_CPUS,
-};
-
-/* Pinned shared map: see  mapfile_ifindex_type */
-struct bpf_map_def SEC("maps") map_ifindex_type = {
-	.type        = BPF_MAP_TYPE_ARRAY,
-	.key_size    = sizeof(__u32),
-	.value_size  = sizeof(__u32),
-	.max_entries = MAX_IFINDEX,
-};
-
 /* Special map type that can XDP_REDIRECT frames to another CPU */
-struct bpf_map_def SEC("maps") cpu_map = {
-	.type		= BPF_MAP_TYPE_CPUMAP,
-	.key_size	= sizeof(__u32),
-	.value_size	= sizeof(__u32),
-	.max_entries	= MAX_CPUS,
-};
+struct {
+	__uint(type, BPF_MAP_TYPE_CPUMAP);
+	__uint(max_entries, MAX_CPUS);
+	__type(key, __u32);
+	__type(value, __u32);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} cpu_map SEC(".maps");
 
-struct bpf_map_def SEC("maps") cpus_available = {
-        .type           = BPF_MAP_TYPE_ARRAY,
-        .key_size       = sizeof(__u32),
-        .value_size     = sizeof(__u32),
-        .max_entries    = MAX_CPUS,
-};
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, MAX_CPUS);
+	__type(key, __u32);
+	__type(value, __u32);
+} cpus_available SEC(".maps");
 
 #ifdef  DEBUG
 /* Only use this for debug output. Notice output from bpf_trace_printk()
@@ -218,8 +196,8 @@ __u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 	return XDP_PASS;
 }
 
-SEC("xdp_prog")
-int  xdp_program(struct xdp_md *ctx)
+SEC("xdp")
+int xdp_iphash_to_cpu(struct xdp_md *ctx)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
@@ -242,4 +220,3 @@ int  xdp_program(struct xdp_md *ctx)
 }
 
 char _license[] SEC("license") = "GPL";
-

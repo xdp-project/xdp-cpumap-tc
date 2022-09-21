@@ -98,7 +98,6 @@ struct bpf_prog_load_attr_maps {
 /* below: shared pinned maps */
 static int ip_hash_map_fd = -1;
 static int ifindex_type_map_fd  = -1;
-static int txq_config_map_fd  = -1;
 
 /* below: private maps */
 static int cpu_map_fd = -1;
@@ -140,7 +139,6 @@ static int init_map_fds(struct bpf_object *obj,
 	cpus_available_map_fd= find_map_fd_by_name(obj,"cpus_available",attr);
 	ip_hash_map_fd       = find_map_fd_by_name(obj,"map_ip_hash", attr);
 	ifindex_type_map_fd  = find_map_fd_by_name(obj,"map_ifindex_type",attr);
-	txq_config_map_fd    = find_map_fd_by_name(obj,"map_txq_config", attr);
 
 	if (cpu_map_fd < 0 || ip_hash_map_fd < 0 ||
 	    cpus_available_map_fd < 0 || ifindex_type_map_fd < 0) {
@@ -227,7 +225,7 @@ static void remove_xdp_program(int ifindex, const char *ifname, __u32 xdp_flags)
 			ifindex, ifname);
 	}
 	if (ifindex > -1) {
-		bpf_set_link_xdp_fd(ifindex, -1, xdp_flags);
+		bpf_xdp_attach(ifindex, -1, xdp_flags, NULL);
 		if (bpf_map_update_elem(ifindex_type_map_fd,
 					&ifindex, &dir, 0) < 0) {
 			fprintf(stderr, "ERR: Clear ifindex type failed \n");
@@ -268,93 +266,27 @@ static inline bool IS_ERR_OR_NULL(const void *ptr)
 int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 			     struct bpf_object **pobj, int *prog_fd)
 {
-	struct bpf_object_open_attr open_attr = {
-		.file		= attr->file,
-		.prog_type	= attr->prog_type,
-	};
-	struct bpf_program *prog, *first_prog = NULL;
-	enum bpf_attach_type expected_attach_type;
-	enum bpf_prog_type prog_type;
+	LIBBPF_OPTS(bpf_object_open_opts, opts,
+		    .pin_root_path = BASEDIR_MAPS);
+	struct bpf_program *first_prog = NULL;
 	struct bpf_object *obj;
 	struct bpf_map *map;
-	int err;
-	int i;
+	int err, i;
 
 	if (!attr)
 		return -EINVAL;
 	if (!attr->file)
 		return -EINVAL;
 
-
-	obj = bpf_object__open_xattr(&open_attr);
+	obj = bpf_object__open_file(attr->file, &opts);
 	if (IS_ERR_OR_NULL(obj))
 		return -ENOENT;
 
-	bpf_object__for_each_program(prog, obj) {
-		/*
-		 * If type is not specified, try to guess it based on
-		 * section name.
-		 */
-		prog_type = attr->prog_type;
-#if 0 /* Use internal libbpf variables */
-		prog->prog_ifindex = attr->ifindex;
-#endif
-		expected_attach_type = attr->expected_attach_type;
-#if 0 /* Use internal libbpf variables */
-		if (prog_type == BPF_PROG_TYPE_UNSPEC) {
-			err = bpf_program__identify_section(prog, &prog_type,
-							    &expected_attach_type);
-			if (err < 0) {
-				bpf_object__close(obj);
-				return -EINVAL;
-			}
-		}
-#endif
-
-		bpf_program__set_type(prog, prog_type);
-		bpf_program__set_expected_attach_type(prog,
-						      expected_attach_type);
-
-		if (!first_prog)
-			first_prog = prog;
-	}
+	first_prog = bpf_object__next_program(obj, NULL);
 
 	/* Reset attr->pinned_maps.map_fd to identify successful file load */
 	for (i = 0; i < attr->nr_pinned_maps; i++)
 		attr->pinned_maps[i].map_fd = -1;
-
-	bpf_map__for_each(map, obj) {
-		const char* mapname = bpf_map__name(map);
-
-#if 0 /* Use internal libbpf variables */
-		if (!bpf_map__is_offload_neutral(map))
-			map->map_ifindex = attr->ifindex;
-#endif
-		for (i = 0; i < attr->nr_pinned_maps; i++) {
-			struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
-			int fd;
-
-			if (strcmp(mapname, pin_map->name) != 0)
-				continue;
-
-			/* Matched, try opening pinned file */
-			fd = bpf_obj_get(pin_map->filename);
-			if (fd > 0) {
-				/* Use FD from pinned map as replacement */
-				bpf_map__reuse_fd(map, fd);
-				/* TODO: Might want to set internal map "name"
-				 * if opened pinned map didn't, to allow
-				 * bpf_object__find_map_fd_by_name() to work.
-				 */
-				pin_map->map_fd = fd;
-				continue;
-			}
-			/* Could not open pinned filename map, then this prog
-			 * should then pin the map, BUT this can only happen
-			 * after bpf_object__load().
-			 */
-		}
-	}
 
 	if (!first_prog) {
 		pr_warning("object file doesn't contain bpf program\n");
@@ -369,12 +301,11 @@ int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 	}
 
 	/* Pin the maps that were not loaded via pinned filename */
-	bpf_map__for_each(map, obj) {
+	bpf_object__for_each_map(map, obj) {
 		const char* mapname = bpf_map__name(map);
 
 		for (i = 0; i < attr->nr_pinned_maps; i++) {
 			struct bpf_pinned_map *pin_map = &attr->pinned_maps[i];
-			int err;
 
 			if (strcmp(mapname, pin_map->name) != 0)
 				continue;
@@ -383,10 +314,6 @@ int bpf_prog_load_xattr_maps(const struct bpf_prog_load_attr_maps *attr,
 			if (pin_map->map_fd != -1)
 				continue;
 
-			/* Needs to be pinned */
-			err = bpf_map__pin(map, pin_map->filename);
-			if (err)
-				continue;
 			pin_map->map_fd = bpf_map__fd(map);
 		}
 	}
@@ -434,16 +361,14 @@ int main(int argc, char **argv)
 	struct bpf_pinned_map my_pinned_maps[4];
 	struct bpf_prog_load_attr_maps prog_load_attr_maps = {
 		.prog_type	= BPF_PROG_TYPE_XDP,
-		.nr_pinned_maps	= 4,
+		.nr_pinned_maps	= 3,
 	};
 	my_pinned_maps[0].name     = "map_ip_hash";
 	my_pinned_maps[0].filename = mapfile_ip_hash;
 	my_pinned_maps[1].name     = "map_ifindex_type";
 	my_pinned_maps[1].filename = mapfile_ifindex_type;
-	my_pinned_maps[2].name     = "map_txq_config";
-	my_pinned_maps[2].filename = mapfile_txq_config;
-	my_pinned_maps[3].name     = "cpu_map";
-	my_pinned_maps[3].filename = mapfile_cpu_map;
+	my_pinned_maps[2].name     = "cpu_map";
+	my_pinned_maps[2].filename = mapfile_cpu_map;
 
 	prog_load_attr_maps.pinned_maps = my_pinned_maps;
 
@@ -483,7 +408,7 @@ int main(int argc, char **argv)
 	prog_load_attr_maps.file = filename;
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hSrqdwlc:q:",
+	while ((opt = getopt_long(argc, argv, "hSrqd:wlc:q:o:s:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':
@@ -618,7 +543,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERR: create ifindex direction type failed \n");
 		return (EXIT_FAIL_BPF);
 	}
-	if ((err = bpf_set_link_xdp_fd(ifindex, prog_fd, xdp_flags)) < 0) {
+	if ((err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL)) < 0) {
 		fprintf(stderr, "ERR: link set xdp fd failed (err:%d)\n", err);
 		return EXIT_FAIL_XDP;
 	}

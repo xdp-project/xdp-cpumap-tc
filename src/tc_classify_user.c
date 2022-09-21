@@ -25,7 +25,7 @@ static const char *__doc__=
 static int map_txq_config_fd = -1;
 
 const char *bpf_obj  = "tc_classify_kern.o";
-const char *sec_name = "tc_classify";
+const char *sec_name = "tc";
 
 static const struct option long_options[] = {
 	{"help",	no_argument,		NULL, 'h' },
@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Parse commands line args */
-	while ((opt = getopt_long(argc, argv, "hq",
+	while ((opt = getopt_long(argc, argv, "hqblc:m:j:d:",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'q':

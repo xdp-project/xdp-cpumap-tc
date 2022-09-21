@@ -197,7 +197,7 @@ int main(int argc, char **argv) {
 	__u32 tc_handle = 0;
 	bool provided_classid = false;
 
-	while ((opt = getopt_long(argc, argv, "haxil:",
+	while ((opt = getopt_long(argc, argv, "hac:t:i:le",
 				  long_options, &longindex)) != -1) {
 		switch (opt) {
 		case 'a':

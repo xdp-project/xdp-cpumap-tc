@@ -26,6 +26,9 @@ extern int verbose; /* common_user.c */
  * Map files shared between TC and XDP program, are due to iproute2
  * limitations, located under /sys/fs/bpf/tc/globals/
  */
+/* Basedir due to iproute2 use this path */
+#define BASEDIR_MAPS "/sys/fs/bpf/tc/globals"
+
 extern const char *mapfile_txq_config; /* located in common_user.c */
 extern const char *mapfile_ip_hash;
 extern const char *mapfile_ifindex_type;

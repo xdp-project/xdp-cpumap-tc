@@ -10,16 +10,28 @@
 
 #include <stdbool.h>
 
-#include "bpf_endian.h"
-#include "common_kern_user.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
-#include "bpf_helpers.h"
+#include "common_kern_user.h"
+#include "shared_maps.h"
+
+/* More dynamic: let create a map that contains the mapping table, to
+ * allow more dynamic configuration. (See common.h for struct txq_config)
+ */
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, MAX_CPUS);
+	__type(key, __u32);
+	__type(value, struct txq_config);
+	__uint(pinning, LIBBPF_PIN_BY_NAME);
+} map_txq_config SEC(".maps");
 
 /* Manuel setup:
 
  tc qdisc  del dev ixgbe2 clsact # clears all
  tc qdisc  add dev ixgbe2 clsact
- tc filter add dev ixgbe2 egress bpf da obj tc_classify_kern.o sec tc_classify
+ tc filter add dev ixgbe2 egress bpf da obj tc_classify_kern.o sec tc
  tc filter list dev ixgbe2 egress
 
 */
@@ -43,35 +55,6 @@ struct bpf_elf_map {
         __u32 pinning;
 	__u32 inner_id;
 	__u32 inner_idx;
-};
-
-/* Map shared with XDP programs */
-struct bpf_elf_map SEC("maps") map_ip_hash = {
-	.type       = BPF_MAP_TYPE_HASH,
-	.size_key   = sizeof(__u32),
-	.size_value = sizeof(struct ip_hash_info),
-	.max_elem   = IP_HASH_ENTRIES_MAX,
-        .pinning    = PIN_GLOBAL_NS, /* /sys/fs/bpf/tc/globals/map_ip_hash */
-};
-
-/* More dynamic: let create a map that contains the mapping table, to
- * allow more dynamic configuration. (See common.h for struct txq_config)
- */
-struct bpf_elf_map SEC("maps") map_txq_config = {
-        .type	    = BPF_MAP_TYPE_ARRAY,
-        .size_key   = sizeof(__u32),
-        .size_value = sizeof(struct txq_config),
-        .pinning    = PIN_GLOBAL_NS,/* /sys/fs/bpf/tc/globals/map_txq_config */
-        .max_elem   = MAX_CPUS,
-};
-
-/* Map shared with XDP programs */
-struct bpf_elf_map SEC("maps") map_ifindex_type = {
-        .type	    = BPF_MAP_TYPE_ARRAY,
-        .size_key   = sizeof(__u32),
-        .size_value = sizeof(struct txq_config),
-        .pinning    = PIN_GLOBAL_NS,/* /sys/fs/bpf/tc/globals/map_ifindex_type*/
-        .max_elem   = MAX_IFINDEX,
 };
 
 /*
@@ -269,10 +252,10 @@ bool special_minor_classid(struct __sk_buff *skb,
 }
 
 /* Quick manual reload command:
- tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc_classify
+ tc filter replace dev ixgbe2 prio 0xC000 handle 1 egress bpf da obj tc_classify_kern.o sec tc
  */
-SEC("tc_classify")
-int  tc_cls_prog(struct __sk_buff *skb)
+SEC("tc")
+int tc_iphash_to_cpu(struct __sk_buff *skb)
 {
 	__u32 cpu = bpf_get_smp_processor_id();
 	struct ip_hash_info *ip_info;
