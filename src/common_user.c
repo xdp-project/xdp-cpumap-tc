@@ -79,7 +79,7 @@ bool map_txq_config_check_ip_info(int map_fd, struct ip_hash_info *ip_info) {
 struct ip_hash_key ip_string_to_key(char *ip_string) {
 	struct ip_hash_key key;
 	int res;
-	char addr[42]; /* Temporary buffer if parsing IP */
+	char addr[INET6_ADDRSTRLEN]; /* Temporary buffer if parsing IP */
 
 	key.address.__in6_u.__u6_addr32[0] = 0;
         key.address.__in6_u.__u6_addr32[1] = 0;
