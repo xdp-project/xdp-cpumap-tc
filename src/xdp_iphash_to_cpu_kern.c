@@ -7,6 +7,8 @@
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
 #include <linux/in.h>
+#include <linux/ipv6.h>
+#include <linux/in6.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
 
@@ -15,8 +17,6 @@
 
 #include "common_kern_user.h"
 #include "shared_maps.h"
-
-#define DEBUG
 
 struct vlan_hdr {
 	__be16 h_vlan_TCI;
@@ -102,55 +102,95 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 	return true;
 }
 
+static __always_inline struct ip_hash_info *get_ip_info(struct ip_hash_key *ip)
+{
+	struct ip_hash_info *ip_info;
+
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, ip);
+	if (!ip_info) {
+		struct ip_hash_key null_addr;
+	        null_addr.prefixlen = 128;
+	        null_addr.address.in6_u.u6_addr32[0] = 0;
+	        null_addr.address.in6_u.u6_addr32[1] = 0;
+        	null_addr.address.in6_u.u6_addr32[2] = 0;
+	        null_addr.address.in6_u.u6_addr32[3] = 0;
+		/* On LAN side (XDP-ingress) some uncategorized traffic are
+		 * expected, e.g. services like DHCP are running and IPs
+		 * contacting captive portal (which are not yet configured)
+		 */
+		// bpf_debug("cant find ip_info->cpu id for ip:%u\n", ip);
+		// the all-zeroes address is for default traffic
+		ip_info = bpf_map_lookup_elem(&map_ip_hash, &null_addr);
+	}
+	return ip_info;
+}
+
 static __always_inline
-__u32 parse_ipv4(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex)
+__u32 parse_ip(struct xdp_md *ctx, __u32 l3_offset, __u32 ifindex, __u16 eth_proto)
 {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data     = (void *)(long)ctx->data;
+
+	/* aliases pointers used for v4/v6 based on version */
 	struct iphdr *iph = data + l3_offset;
+	struct ipv6hdr *ip6h = data + l3_offset;
 	__u32 *direction_lookup;
 	__u32 direction;
-	__u32 ip; /* type need to match map */
 	struct ip_hash_info *ip_info;
 	//u32 *cpu_id_lookup;
 	__u32 cpu_id;
 	__u32 *cpu_lookup;
 	__u32 cpu_dest;
 
-	/* Hint: +1 is sizeof(struct iphdr) */
-	if (iph + 1 > data_end) {
-		bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
-		return XDP_PASS;
-	}
+	/* Setup the ip_hash_key lookup structure */
+	struct ip_hash_key lookup;
+        lookup.prefixlen = 128;
+        lookup.address.in6_u.u6_addr32[0] = 0;
+        lookup.address.in6_u.u6_addr32[1] = 0;
+        lookup.address.in6_u.u6_addr32[2] = 0;
+        lookup.address.in6_u.u6_addr32[3] = 0;
+
 	/* WAN or LAN interface? */
 	direction_lookup = bpf_map_lookup_elem(&map_ifindex_type, &ifindex);
 	if (!direction_lookup)
 		return XDP_PASS;
 	direction = *direction_lookup;
-	/* Extract key, XDP operate at "ingress" */
-	if (direction == INTERFACE_WAN) {
-		ip = iph->daddr;
-	} else if (direction == INTERFACE_LAN) {
-		ip = iph->saddr;
-	} else {
+	if (direction != INTERFACE_WAN && direction != INTERFACE_LAN) {
 		bpf_debug("Cant determin ifindex(%u) direction\n", ifindex);
 		return XDP_PASS;
 	}
 
-	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
-	if (!ip_info) {
-		/* On LAN side (XDP-ingress) some uncategorized traffic are
-		 * expected, e.g. services like DHCP are running and IPs
-		 * contacting captive portal (which are not yet configured)
-		 */
-		// bpf_debug("cant find ip_info->cpu id for ip:%u\n", ip);
-		// 255.255.255.255 is for default traffic
-		ip = bpf_ntohl(0xFFFFFFFF);
-		ip_info = bpf_map_lookup_elem(&map_ip_hash, &ip);
-		if (!ip_info) {
-			bpf_debug("cant find default cpu_idx_lookup\n");
+	/* we know it's v4 or v6, so just check the version field of the IP
+	 * header itself
+	 */
+	if (eth_proto == ETH_P_IP) { /* IPv4 */
+		/* Hint: +1 is sizeof(struct iphdr) */
+		if (iph + 1 > data_end) {
+			bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
 			return XDP_PASS;
 		}
+
+		/* Extract key, XDP operate at "ingress" */
+		if (direction == INTERFACE_WAN) {
+			lookup.address.in6_u.u6_addr32[3] = iph->daddr;
+		} else if (direction == INTERFACE_LAN) {
+			lookup.address.in6_u.u6_addr32[3] = iph->saddr;
+		}
+	} else {
+		if (ip6h + 1 > data_end) {
+			bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
+			return XDP_PASS;
+		}
+		if (direction == INTERFACE_WAN)
+			lookup.address = ip6h->daddr;
+		else if (direction == INTERFACE_LAN)
+			lookup.address = ip6h->saddr;
+	}
+
+	ip_info = get_ip_info(&lookup);
+	if (!ip_info) {
+		bpf_debug("cant find default cpu_idx_lookup\n");
+		return XDP_PASS;
 	}
 	cpu_id = ip_info->cpu;
 
@@ -181,11 +221,10 @@ __u32 handle_eth_protocol(struct xdp_md *ctx, __u16 eth_proto, __u32 l3_offset,
 
 	switch (eth_proto) {
 	case ETH_P_IP:
-		action = parse_ipv4(ctx, l3_offset, ifindex);
-		//bpf_debug("return from redirect %i\n",test);
+	case ETH_P_IPV6: 
+		action = parse_ip(ctx, l3_offset, ifindex, eth_proto);
 		return action;
 		break;
-	case ETH_P_IPV6: /* Not handler for IPv6 yet*/
 	case ETH_P_ARP:  /* Let OS handle ARP */
 		/* Fall-through */
 	default:
