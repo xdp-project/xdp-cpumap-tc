@@ -76,15 +76,28 @@ bool map_txq_config_check_ip_info(int map_fd, struct ip_hash_info *ip_info) {
 	return true;
 }
 
-struct ip_hash_key ip_string_to_key(char *ip_string, __u32 prefix) {
+struct ip_hash_key ip_string_to_key(char *ip_string) {
 	struct ip_hash_key key;
 	int res;
+	char addr[42]; /* Temporary buffer if parsing IP */
 
 	key.address.__in6_u.__u6_addr32[0] = 0;
         key.address.__in6_u.__u6_addr32[1] = 0;
         key.address.__in6_u.__u6_addr32[2] = 0;
 	key.address.__in6_u.__u6_addr32[3] = 0;
 	key.prefixlen = 0;
+
+	/* Does the IP string contain a prefix? */
+	char * slash_loc = strchr(ip_string, '/');
+	if (slash_loc != NULL) {
+		char cidr[4];
+		memset(&addr, 0, sizeof(addr));
+		memset(&cidr, 0, sizeof(cidr));
+		strncpy(addr, ip_string, slash_loc - ip_string);
+		strncpy(cidr, slash_loc+1, 4);
+		key.prefixlen = atoi(cidr);
+		ip_string = (char *)&addr;
+	}
 
 	struct addrinfo hints = {}, *result;
 	memset (&hints, 0, sizeof (hints));
@@ -101,12 +114,18 @@ struct ip_hash_key ip_string_to_key(char *ip_string, __u32 prefix) {
 	switch (result->ai_family) {
 		case AF_INET:
 			key.address.__in6_u.__u6_addr32[3] = ((struct sockaddr_in *) result->ai_addr)->sin_addr.s_addr;
-			key.prefixlen = prefix + 96;
+			if (key.prefixlen == 0) {
+				key.prefixlen = 128;
+			} else {
+				key.prefixlen = key.prefixlen + 96;
+			}
 			break;
 		case AF_INET6:
 			printf("IPv6\n");
 			key.address = ((struct sockaddr_in6 *) result->ai_addr)->sin6_addr;
-			key.prefixlen = prefix;
+			if (key.prefixlen == 0) {
+				key.prefixlen = 128;
+			}
 			break;
 	}
 
@@ -128,8 +147,7 @@ void print_key_binary(struct ip_hash_key *key) {
 }
 
 int iphash_modify(int fd, char *ip_string, unsigned int action,
-		  __u32 cpu_idx, __u32 tc_handle, int txq_map_fd,
-		  __u32 prefix)
+		  __u32 cpu_idx, __u32 tc_handle, int txq_map_fd)
 {
 	//printf ("In iphash_modify %u\n",cpu_idx);
 	struct ip_hash_key key;
@@ -145,7 +163,7 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 	ip_info.tc_handle = tc_handle;
 
 	/* Convert IP-string into network byte-order value */
-	key = ip_string_to_key(ip_string, prefix);
+	key = ip_string_to_key(ip_string);
 	if (key.prefixlen == 0) {
 		return EXIT_FAIL_IP;
 	}

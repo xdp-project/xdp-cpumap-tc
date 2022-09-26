@@ -43,8 +43,7 @@ extern const char *mapfile_cpu_map;
 #define ACTION_DEL	(1 << 1)
 
 int iphash_modify(int fd, char *ip_string, unsigned int action,
-		  __u32 cpu_idx, __u32 tc_handle, int txq_map_fd,
-		  __u32 prefix);
+		  __u32 cpu_idx, __u32 tc_handle, int txq_map_fd);
 
 bool locate_kern_object(char *execname, char *filename, size_t size);
 

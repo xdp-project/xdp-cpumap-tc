@@ -41,7 +41,6 @@ static const struct option long_options[] = {
         {"cpu",         required_argument,      NULL, 'c' },
         {"list",        no_argument,            NULL, 'l' },
         {"clear",       no_argument,            NULL, 'e' },
-	{"prefix",      required_argument,      NULL, 'p' },
         {0, 0, NULL,  0 }
 };
 
@@ -208,7 +207,6 @@ int main(int argc, char **argv) {
 	__u32 cpu = -1;
 	__u32 tc_handle = 0;
 	bool provided_classid = false;
-	__u32 prefix = 32;
 
 	while ((opt = getopt_long(argc, argv, "hac:t:i:le",
 				  long_options, &longindex)) != -1) {
@@ -221,9 +219,6 @@ int main(int argc, char **argv) {
 			break;
 		case 'c':
 			cpu = strtoul(optarg, NULL, 0);
-			break;
-		case 'p':
-			prefix = strtoul(optarg, NULL, 0);
 			break;
 		case 'i':
 			if (!optarg || strlen(optarg) >= STR_MAX) {
@@ -300,7 +295,7 @@ int main(int argc, char **argv) {
 			int txq_fd = open_bpf_map(mapfile_txq_config);
 			fd = open_bpf_map(mapfile_ip_hash);
 			res = iphash_modify(fd, ip_string, action, cpu,
-					    tc_handle, txq_fd, prefix);
+					    tc_handle, txq_fd);
 			close(fd);
 			close(txq_fd);
 		}
