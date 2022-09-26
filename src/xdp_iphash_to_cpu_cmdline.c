@@ -42,7 +42,6 @@ static const struct option long_options[] = {
         {"list",        no_argument,            NULL, 'l' },
         {"clear",       no_argument,            NULL, 'e' },
 	{"prefix",      required_argument,      NULL, 'p' },
-	{"ip6",         no_argument,            NULL, '6' },
         {0, 0, NULL,  0 }
 };
 
