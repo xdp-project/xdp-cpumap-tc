@@ -1,3 +1,4 @@
+#define DEBUG 1
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <linux/bpf.h>
 #include <linux/pkt_cls.h>
@@ -7,6 +8,8 @@
 #include <linux/if_vlan.h>
 #include <linux/ip.h>
 #include <linux/in.h>
+#include <linux/ipv6.h>
+#include <linux/in6.h>
 
 #include <stdbool.h>
 
@@ -152,7 +155,8 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 }
 
 static __always_inline
-__u32 get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type)
+void get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type,
+		struct ip_hash_key *key)
 {
 	void *data_end = (void *)(long)skb->data_end;
 	void *data     = (void *)(long)skb->data;
@@ -161,7 +165,7 @@ __u32 get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type)
 
 	if (iph + 1 > data_end) {
 		//bpf_debug("Invalid IPv4 packet: L3off:%llu\n", l3_offset);
-		return 0;
+		return;
 	}
 
 	/* The IP-addr to match against depend on the "direction" of
@@ -177,8 +181,35 @@ __u32 get_ipv4_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type)
 	default:
 		ipv4 = 0;
 	}
+	key->address.in6_u.u6_addr32[3] = ipv4;
+}
 
-	return ipv4;
+
+static __always_inline
+void get_ipv6_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type,
+		struct ip_hash_key *key)
+{
+	void *data_end = (void *)(long)skb->data_end;
+	void *data     = (void *)(long)skb->data;
+	struct ipv6hdr *ip6h = data + l3_offset;
+
+	if (ip6h + 1 > data_end) {
+		//bpf_debug("Invalid IPv6 packet: L3off:%llu\n", l3_offset);
+		//*dst = nulladdr;
+		return;
+	}
+
+	/* The IP-addr to match against depend on the "direction" of
+	 * the packet.  This TC hook runs at egress.
+	 */
+	switch (ifindex_type) {
+	case INTERFACE_WAN: /* Egress on WAN interface: match on src IP */
+		key->address = ip6h->saddr;
+		break;
+	case INTERFACE_LAN: /* Egress on LAN interface: match on dst IP */
+		key->address = ip6h->daddr;
+		break;
+	}
 }
 
 /* Locahost generated traffic gets assigned a classid MINOR number */
@@ -270,7 +301,8 @@ int tc_iphash_to_cpu(struct __sk_buff *skb)
 	struct ethhdr *eth = data;
 	__u16 eth_proto = 0;
 	__u32 l3_offset = 0;
-	__u32 ipv4 = bpf_ntohl(0xFFFFFFFF); /* default not found */
+	//__u32 ipv4 = bpf_ntohl(0xFFFFFFFF); // default not found
+	struct ip_hash_key hash_key;
 
 	txq_cfg = bpf_map_lookup_elem(&map_txq_config, &cpu);
         if (!txq_cfg)
@@ -311,13 +343,18 @@ int tc_iphash_to_cpu(struct __sk_buff *skb)
 		return TC_ACT_OK;
 
 	/* Get IP addr to match against */
+        hash_key.prefixlen = 128;
+        hash_key.address.in6_u.u6_addr32[0] = 0;
+        hash_key.address.in6_u.u6_addr32[1] = 0;
+        hash_key.address.in6_u.u6_addr32[2] = 0;
+        hash_key.address.in6_u.u6_addr32[3] = 0;
 	switch (eth_proto) {
 	case ETH_P_IP:
-		ipv4 = get_ipv4_addr(skb, l3_offset, *ifindex_type);
-		if (!ipv4)
-			return TC_ACT_OK;
+		get_ipv4_addr(skb, l3_offset, *ifindex_type, &hash_key);
 		break;
-	case ETH_P_IPV6: /* No handler for IPv6 yet */
+	case ETH_P_IPV6: 
+		get_ipv6_addr(skb, l3_offset, *ifindex_type, &hash_key);
+		break;
 	case ETH_P_ARP:  /* Let OS handle ARP */
 		// TODO: Should we choose a special classid for these?
 		/* Fall-through */
@@ -326,18 +363,17 @@ int tc_iphash_to_cpu(struct __sk_buff *skb)
 		return TC_ACT_OK;
 	}
 
-	/* Lookup IPv4 in map_ip_hash */
-	ip_info = bpf_map_lookup_elem(&map_ip_hash, &ipv4);
+	ip_info = bpf_map_lookup_elem(&map_ip_hash, &hash_key);
 	if (!ip_info) {
 		bpf_debug("Misconf: FAILED lookup IP:0x%x ifindex_ingress:%d prio:%x\n",
-			  ipv4, skb->ingress_ifindex, skb->priority);
+			  hash_key.address.in6_u.u6_addr32[3], skb->ingress_ifindex, skb->priority);
 		// TODO: Assign to some default classid?
 		return TC_ACT_OK;
 	}
 
 	if (ip_info->cpu != cpu) {
 		bpf_debug("Mismatch: Curr-CPU:%u but IP:%x wants CPU:%u\n",
-			  cpu, ipv4, ip_info->cpu);
+			  cpu, hash_key.address.in6_u.u6_addr32[3], ip_info->cpu);
 		bpf_debug("Mismatch: more-info ifindex:%d ingress:%d skb->prio:%x\n",
 			  skb->ifindex, skb->ingress_ifindex, skb->priority);
 	}

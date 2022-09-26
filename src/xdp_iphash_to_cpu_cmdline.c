@@ -41,6 +41,8 @@ static const struct option long_options[] = {
         {"cpu",         required_argument,      NULL, 'c' },
         {"list",        no_argument,            NULL, 'l' },
         {"clear",       no_argument,            NULL, 'e' },
+	{"prefix",      required_argument,      NULL, 'p' },
+	{"ip6",         no_argument,            NULL, '6' },
         {0, 0, NULL,  0 }
 };
 
@@ -65,52 +67,65 @@ static void usage(char *argv[])
 	printf("\n");
 }
 
-static bool get_key32_value_ip_info(int fd, __u32 key, struct ip_hash_info *ip_info)
+static bool get_key_value_ip_info(int fd, struct ip_hash_key key, struct ip_hash_info *ip_info)
 {
 	if ((bpf_map_lookup_elem(fd, &key, ip_info)) != 0) {
 		fprintf(stderr,
 			"ERR: bpf_map_lookup_elem failed key:%u errno(%d):%s\n",
-			key, errno, strerror(errno));
+			key.address.__in6_u.__u6_addr32[3], errno, strerror(errno));
 		return false;
 	}
 	return true;
 }
 
-static void iphash_print_ipv4(__u32 ip, struct ip_hash_info *ip_info,int i)
+static void iphash_print_ip(struct ip_hash_key ip, struct ip_hash_info *ip_info,int i)
 {
-	char ip_txt[INET_ADDRSTRLEN] = {0};
+	char ip_txt[INET6_ADDRSTRLEN] = {0};
+	__u32 prefix = 128;
 
 	if (!ip_info) {
 		fprintf(stderr,	"ERR: %s() NULL pointer\n", __func__);
 		exit(EXIT_FAIL);
 	}
 
-	/* Convert IPv4 addresses from binary to text form */
-	if (!inet_ntop(AF_INET, &ip, ip_txt, sizeof(ip_txt))) {
-		fprintf(stderr,
-			"ERR: Cannot convert u32 IP:0x%X to IP-txt\n", ip);
-		exit(EXIT_FAIL_IP);
+	if (ip.address.__in6_u.__u6_addr32[0] == 0 && ip.address.__in6_u.__u6_addr32[1] == 0 && ip.address.__in6_u.__u6_addr32[2] == 0) {
+		// It's IPv4
+		if (!inet_ntop(AF_INET, &ip.address.__in6_u.__u6_addr32[3], ip_txt, sizeof(ip_txt))) {
+	                fprintf(stderr,
+	                        "ERR: Cannot convert u32 IP:0x%X to IP-txt\n", ip.address.__in6_u.__u6_addr32[3]);
+	                exit(EXIT_FAIL_IP);
+	        }
+		prefix = ip.prefixlen - 96;
+	} else {
+		// It's IPv6
+		if (!inet_ntop(AF_INET6, &ip.address, ip_txt, sizeof(ip_txt))) {
+                        fprintf(stderr,
+                                "ERR: Cannot convert u128 IP:0x%X to IP-txt\n", ip.address.__in6_u.__u6_addr32[0]);
+                        exit(EXIT_FAIL_IP);
+                }
+		prefix = ip.prefixlen;
 	}
+
 	if (i > 0)
 		printf(",\n");
 	__u16 ip_info_major = (TC_H_MAJOR(ip_info->tc_handle) >> 16);
 	__u16 ip_info_minor = (TC_H_MINOR(ip_info->tc_handle));
-	printf("\"%s\" : { \"cpu\" : %u, \"tc_maj\" : \"%X\" , \"tc_min\" : \"%X\" }",
-	       ip_txt, ip_info->cpu, ip_info_major, ip_info_minor);
+	printf("\"%s/%u\" : { \"cpu\" : %u, \"tc_maj\" : \"%X\" , \"tc_min\" : \"%X\" }",
+	       ip_txt, prefix, ip_info->cpu, ip_info_major, ip_info_minor);
 }
-static void iphash_list_all_ipv4(int fd)
+static void iphash_list_all_ip(int fd)
 {
-	__u32 key, *prev_key = NULL;
+	struct ip_hash_key key, *prev_key = NULL;
 	struct ip_hash_info ip_info;
 	int err;
 	int i = 0;
 	printf("{\n");
 	while ((err = bpf_map_get_next_key(fd, prev_key, &key)) == 0) {
-		if (!get_key32_value_ip_info(fd, key, &ip_info)) {
+		if (!get_key_value_ip_info(fd, key, &ip_info)) {
 			err = -1;
 			break;
 		}
-		iphash_print_ipv4(key, &ip_info, i);
+		iphash_print_ip(key, &ip_info, i);
 		prev_key = &key;
 		i++;
 	}
@@ -121,14 +136,12 @@ static void iphash_list_all_ipv4(int fd)
 			"WARN: %s() didn't list all entries: err(%d/%d):%s\n",
 			__func__, err, errno, strerror(errno));
 }
-static void iphash_clear_all_ipv4(int fd)
+static void iphash_clear_all_ip(int fd)
 {
-	char ip_txt[INET_ADDRSTRLEN] = {0};
-	__u32 key, *prev_key = NULL;
+	struct ip_hash_key key, *prev_key = NULL;
 
 	while (bpf_map_get_next_key(fd, prev_key, &key) == 0) {
-                inet_ntop(AF_INET, &key, ip_txt, sizeof(ip_txt));
-		iphash_modify(fd, ip_txt, ACTION_DEL, 0, 0, -1);
+		bpf_map_delete_elem(fd, &key);
 		prev_key = &key;
 	}
 }
@@ -196,6 +209,7 @@ int main(int argc, char **argv) {
 	__u32 cpu = -1;
 	__u32 tc_handle = 0;
 	bool provided_classid = false;
+	__u32 prefix = 32;
 
 	while ((opt = getopt_long(argc, argv, "hac:t:i:le",
 				  long_options, &longindex)) != -1) {
@@ -208,6 +222,9 @@ int main(int argc, char **argv) {
 			break;
 		case 'c':
 			cpu = strtoul(optarg, NULL, 0);
+			break;
+		case 'p':
+			prefix = strtoul(optarg, NULL, 0);
 			break;
 		case 'i':
 			if (!optarg || strlen(optarg) >= STR_MAX) {
@@ -245,13 +262,13 @@ int main(int argc, char **argv) {
 
 	if (do_list) {
 		fd = open_bpf_map(mapfile_ip_hash);
-		iphash_list_all_ipv4(fd);
+		iphash_list_all_ip(fd);
 		close(fd);
 		return EXIT_OK;
 	}
 	if (do_clear) {
 		fd = open_bpf_map(mapfile_ip_hash);
-		iphash_clear_all_ipv4(fd);
+		iphash_clear_all_ip(fd);
 		close(fd);
 		return EXIT_OK;
 	}
@@ -284,7 +301,7 @@ int main(int argc, char **argv) {
 			int txq_fd = open_bpf_map(mapfile_txq_config);
 			fd = open_bpf_map(mapfile_ip_hash);
 			res = iphash_modify(fd, ip_string, action, cpu,
-					    tc_handle, txq_fd);
+					    tc_handle, txq_fd, prefix);
 			close(fd);
 			close(txq_fd);
 		}
