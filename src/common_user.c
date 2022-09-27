@@ -107,7 +107,7 @@ struct ip_hash_key ip_string_to_key(char *ip_string) {
 	res = getaddrinfo(ip_string, NULL, &hints, &result);
 	if (res < 0) {
 		perror("getaddrinfo");
-		key.prefixlen = 0; /* Indicates fail */
+		key.prefixlen = 255; /* Indicates fail */
 		return key;
 	}
 
@@ -164,7 +164,7 @@ int iphash_modify(int fd, char *ip_string, unsigned int action,
 
 	/* Convert IP-string into network byte-order value */
 	key = ip_string_to_key(ip_string);
-	if (key.prefixlen == 0) {
+	if (key.prefixlen == 255) {
 		return EXIT_FAIL_IP;
 	}
 	print_key_binary(&key);
