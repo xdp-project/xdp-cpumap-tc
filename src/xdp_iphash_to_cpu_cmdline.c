@@ -86,7 +86,7 @@ static void iphash_print_ip(struct ip_hash_key ip, struct ip_hash_info *ip_info,
 		exit(EXIT_FAIL);
 	}
 
-	if (ip.address.__in6_u.__u6_addr32[0] == 0 && ip.address.__in6_u.__u6_addr32[1] == 0 && ip.address.__in6_u.__u6_addr32[2] == 0) {
+	if (ip.address.__in6_u.__u6_addr32[0] == 0xFFFFFFFF && ip.address.__in6_u.__u6_addr32[1] == 0xFFFFFFFF && ip.address.__in6_u.__u6_addr32[2] == 0xFFFFFFFF) {
 		// It's IPv4
 		if (!inet_ntop(AF_INET, &ip.address.__in6_u.__u6_addr32[3], ip_txt, sizeof(ip_txt))) {
 	                fprintf(stderr,

@@ -81,11 +81,11 @@ struct ip_hash_key ip_string_to_key(char *ip_string) {
 	int res;
 	char addr[INET6_ADDRSTRLEN]; /* Temporary buffer if parsing IP */
 
-	key.address.__in6_u.__u6_addr32[0] = 0;
-        key.address.__in6_u.__u6_addr32[1] = 0;
-        key.address.__in6_u.__u6_addr32[2] = 0;
-	key.address.__in6_u.__u6_addr32[3] = 0;
-	key.prefixlen = 0;
+	key.address.__in6_u.__u6_addr32[0] = 0xFFFFFFFF;
+        key.address.__in6_u.__u6_addr32[1] = 0xFFFFFFFF;
+        key.address.__in6_u.__u6_addr32[2] = 0xFFFFFFFF;
+	key.address.__in6_u.__u6_addr32[3] = 0xFFFFFFFF;
+	key.prefixlen = 128;
 
 	/* Does the IP string contain a prefix? */
 	char * slash_loc = strchr(ip_string, '/');
@@ -98,14 +98,12 @@ struct ip_hash_key ip_string_to_key(char *ip_string) {
 		key.prefixlen = atoi(cidr);
 		ip_string = (char *)&addr;
 	}
-
 	struct addrinfo hints = {}, *result;
 	memset (&hints, 0, sizeof (hints));
-	hints.ai_family = PF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags |= AI_CANONNAME;
+	hints.ai_family = AF_UNSPEC;
 	res = getaddrinfo(ip_string, NULL, &hints, &result);
 	if (res < 0) {
+		printf("Code: %d\n", res);
 		perror("getaddrinfo");
 		key.prefixlen = 255; /* Indicates fail */
 		return key;
@@ -114,18 +112,13 @@ struct ip_hash_key ip_string_to_key(char *ip_string) {
 	switch (result->ai_family) {
 		case AF_INET:
 			key.address.__in6_u.__u6_addr32[3] = ((struct sockaddr_in *) result->ai_addr)->sin_addr.s_addr;
-			if (key.prefixlen == 0) {
-				key.prefixlen = 128;
-			} else {
+			if (key.prefixlen != 128) {
 				key.prefixlen = key.prefixlen + 96;
 			}
 			break;
 		case AF_INET6:
 			printf("IPv6\n");
 			key.address = ((struct sockaddr_in6 *) result->ai_addr)->sin6_addr;
-			if (key.prefixlen == 0) {
-				key.prefixlen = 128;
-			}
 			break;
 	}
 

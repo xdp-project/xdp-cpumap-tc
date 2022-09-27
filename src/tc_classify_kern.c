@@ -343,10 +343,10 @@ int tc_iphash_to_cpu(struct __sk_buff *skb)
 
 	/* Get IP addr to match against */
         hash_key.prefixlen = 128;
-        hash_key.address.in6_u.u6_addr32[0] = 0;
-        hash_key.address.in6_u.u6_addr32[1] = 0;
-        hash_key.address.in6_u.u6_addr32[2] = 0;
-        hash_key.address.in6_u.u6_addr32[3] = 0;
+        hash_key.address.in6_u.u6_addr32[0] = 0xFFFFFFFF;
+        hash_key.address.in6_u.u6_addr32[1] = 0xFFFFFFFF;
+        hash_key.address.in6_u.u6_addr32[2] = 0xFFFFFFFF;
+        hash_key.address.in6_u.u6_addr32[3] = 0xFFFFFFFF;
 	switch (eth_proto) {
 	case ETH_P_IP:
 		get_ipv4_addr(skb, l3_offset, *ifindex_type, &hash_key);
@@ -364,10 +364,16 @@ int tc_iphash_to_cpu(struct __sk_buff *skb)
 
 	ip_info = bpf_map_lookup_elem(&map_ip_hash, &hash_key);
 	if (!ip_info) {
-		bpf_debug("Misconf: FAILED lookup IP:0x%x ifindex_ingress:%d prio:%x\n",
-			  hash_key.address.in6_u.u6_addr32[3], skb->ingress_ifindex, skb->priority);
-		// TODO: Assign to some default classid?
-		return TC_ACT_OK;
+		/* Check for 255.255.255.255/32 as a default if no 0.0.0.0/0 is provided */
+		hash_key.prefixlen = 128;
+		hash_key.address.in6_u.u6_addr32[3] = 0xFFFFFFFF;
+		ip_info = bpf_map_lookup_elem(&map_ip_hash, &hash_key);
+		if (!ip_info) {
+			bpf_debug("Misconf: FAILED lookup IP:0x%x ifindex_ingress:%d prio:%x\n",
+				  hash_key.address.in6_u.u6_addr32[3], skb->ingress_ifindex, skb->priority);
+			// TODO: Assign to some default classid?
+			return TC_ACT_OK;
+		}
 	}
 
 	if (ip_info->cpu != cpu) {
