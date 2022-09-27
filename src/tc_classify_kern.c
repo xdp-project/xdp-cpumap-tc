@@ -195,7 +195,6 @@ void get_ipv6_addr(struct __sk_buff *skb, __u32 l3_offset, __u32 ifindex_type,
 
 	if (ip6h + 1 > data_end) {
 		//bpf_debug("Invalid IPv6 packet: L3off:%llu\n", l3_offset);
-		//*dst = nulladdr;
 		return;
 	}
 
