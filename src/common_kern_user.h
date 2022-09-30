@@ -4,6 +4,8 @@
 #ifndef __COMMON_KERN_USER_H
 #define __COMMON_KERN_USER_H
 
+#include <linux/in6.h>
+
 /* Interface (ifindex) direction type */
 #define INTERFACE_NONE	0	/* Not configured */
 #define INTERFACE_WAN	(1 << 0)
@@ -30,6 +32,12 @@ struct ip_hash_info {
 	/* lookup key: __u32 IPv4-address */
 	__u32 cpu;
 	__u32 tc_handle; /* TC handle MAJOR:MINOR combined in __u32 */
+};
+
+/* Key type used for map_ip_hash trie */
+struct ip_hash_key {
+	__u32 prefixlen; /* Length of the prefix to match */
+	struct in6_addr address; /* An IPv6 address. IPv4 uses the last 32 bits. */
 };
 
 #endif /* __COMMON_KERN_USER_H */
