@@ -105,6 +105,11 @@ struct bpf_elf_map {
 #define TC_H_MAJOR(x) TC_H_MAJ(x)
 #define TC_H_MINOR(x) TC_H_MIN(x)
 
+/* Allow callers to redefine VLAN max depth at compile time */
+#ifndef VLAN_MAX_DEPTH
+#define VLAN_MAX_DEPTH 4
+#endif
+
 /* Parse Ethernet layer 2, extract network layer 3 offset and protocol
  *
  * Returns false on error and non-supported ether-type
@@ -115,6 +120,7 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 {
 	__u16 eth_type;
 	__u64 offset;
+	int i;
 
 	offset = sizeof(*eth);
 	if ((void *)eth + offset > data_end)
@@ -126,21 +132,14 @@ bool parse_eth(struct ethhdr *eth, void *data_end,
 	if (bpf_ntohs(eth_type) < ETH_P_802_3_MIN)
 		return false;
 
-	/* Handle VLAN tagged packet */
-	if (eth_type == bpf_htons(ETH_P_8021Q) ||
-	    eth_type == bpf_htons(ETH_P_8021AD)) {
+	/* Skip up to VLAN_MAX_DEPTH 802.1Q/802.1ad tags. */
+	#pragma unroll
+	for (i = 0; i < VLAN_MAX_DEPTH; i++) {
 		struct vlan_hdr *vlan_hdr;
 
-		vlan_hdr = (void *)eth + offset;
-		offset += sizeof(*vlan_hdr);
-		if ((void *)eth + offset > data_end)
-			return false;
-		eth_type = vlan_hdr->h_vlan_encapsulated_proto;
-	}
-	/* Handle double VLAN tagged packet */
-	if (eth_type == bpf_htons(ETH_P_8021Q) ||
-	    eth_type == bpf_htons(ETH_P_8021AD)) {
-		struct vlan_hdr *vlan_hdr;
+		if (eth_type != bpf_htons(ETH_P_8021Q) &&
+		    eth_type != bpf_htons(ETH_P_8021AD))
+			break;
 
 		vlan_hdr = (void *)eth + offset;
 		offset += sizeof(*vlan_hdr);
