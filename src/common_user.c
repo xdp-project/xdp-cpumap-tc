@@ -91,10 +91,14 @@ struct ip_hash_key ip_string_to_key(char *ip_string) {
 	char * slash_loc = strchr(ip_string, '/');
 	if (slash_loc != NULL) {
 		char cidr[4];
+		size_t addr_len = slash_loc - ip_string;
+
+		if (addr_len >= sizeof(addr))
+			addr_len = sizeof(addr) - 1;
 		memset(&addr, 0, sizeof(addr));
 		memset(&cidr, 0, sizeof(cidr));
-		strncpy(addr, ip_string, slash_loc - ip_string);
-		strncpy(cidr, slash_loc+1, 4);
+		strncpy(addr, ip_string, addr_len);
+		strncpy(cidr, slash_loc + 1, sizeof(cidr) - 1);
 		key.prefixlen = atoi(cidr);
 		ip_string = (char *)&addr;
 	}
